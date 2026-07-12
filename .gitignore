@@ -1,0 +1,18 @@
+# Secrets — never commit (real values live only in n8n credentials and Vercel env)
+docs/credentials.md
+.env
+.env.*
+!.env.example
+*.pem
+
+# Dependencies / build output
+node_modules/
+.next/
+out/
+
+# Vercel local link
+.vercel/
+
+# OS noise
+.DS_Store
+Thumbs.db

@@ -1,0 +1,160 @@
+{
+  "_meta": {
+    "version": "1.0",
+    "updated": "2026-04-03",
+    "max_score": 100,
+    "labels": {
+      "Hot": ">=70",
+      "Warm": "45-69",
+      "Cold": "20-44",
+      "Monitor": "<20"
+    }
+  },
+  "dimensions": {
+    "d1_product_fit": {
+      "weight": 30,
+      "method": "LLM (gpt-4o-mini)",
+      "description": "How clearly does this tender map to ManageEngine products?",
+      "note": "LLM returns 0-30. Skip LLM in MVP Phase 1-3; default to 15 for keyword-matched tenders."
+    },
+    "d2_estimated_value": {
+      "weight": 20,
+      "method": "rule-based",
+      "description": "Estimated contract value in EUR",
+      "bands": [
+        {"min": 500000, "max": null, "points": 20},
+        {"min": 200000, "max": 499999, "points": 15},
+        {"min": 100000, "max": 199999, "points": 10},
+        {"min": 50000, "max": 99999, "points": 5},
+        {"min": null, "max": 49999, "points": 2},
+        {"min": null, "max": null, "label": "unknown", "points": 2}
+      ]
+    },
+    "d3_procedure_type": {
+      "weight": 15,
+      "method": "rule-based",
+      "description": "Procurement procedure — affects competitiveness",
+      "mapping": {
+        "openbaar": 15,
+        "openbare procedure": 15,
+        "versneld": 13,
+        "niet-openbaar": 12,
+        "onderhandeling": 10,
+        "mini-competitie": 6,
+        "default": 8
+      }
+    },
+    "d4_authority_type": {
+      "weight": 15,
+      "method": "rule-based",
+      "description": "Type of contracting authority — strategic value",
+      "mapping": {
+        "rijksoverheid": 15,
+        "rijks": 15,
+        "uitvoeringsorganisatie": 14,
+        "politie": 14,
+        "defensie": 14,
+        "provincie": 13,
+        "grote gemeente": 13,
+        "onderwijs": 12,
+        "hogeschool": 12,
+        "universiteit": 12,
+        "zorg": 11,
+        "ziekenhuis": 11,
+        "gemeente": 7,
+        "water": 9,
+        "waterschap": 9,
+        "zbo": 12,
+        "default": 5
+      },
+      "buyer_normalization": {
+        "prefixes": {
+          "rijkswaterstaat": "rijksoverheid",
+          "ministerie": "rijksoverheid",
+          "belastingdienst": "rijksoverheid",
+          "cibg": "rijksoverheid",
+          "rvo": "rijksoverheid",
+          "openbaar ministerie": "rijksoverheid",
+          "politie": "politie",
+          "defensie": "defensie",
+          "provincie": "provincie",
+          "gemeente": "gemeente",
+          "hogeschool": "onderwijs",
+          "universiteit": "onderwijs",
+          "umcg": "zorg",
+          "ziekenhuis": "zorg",
+          "waterschap": "waterschap"
+        }
+      }
+    },
+    "d5_deadline_urgency": {
+      "weight": 10,
+      "method": "rule-based",
+      "description": "Time from now until submission deadline — longer is better",
+      "bands": [
+        {"min_weeks": 6, "max_weeks": null, "points": 10},
+        {"min_weeks": 3, "max_weeks": 6, "points": 7},
+        {"min_weeks": 2, "max_weeks": 3, "points": 4},
+        {"min_weeks": 0, "max_weeks": 2, "points": 1},
+        {"label": "unknown", "points": 5}
+      ]
+    },
+    "d6_recency": {
+      "weight": 5,
+      "method": "rule-based",
+      "description": "Early detection reward — days since publication",
+      "bands": [
+        {"max_hours": 48, "points": 5},
+        {"max_hours": 120, "points": 3},
+        {"min_hours": 120, "points": 1}
+      ]
+    },
+    "d7_cba_relationship": {
+      "weight": 5,
+      "method": "rule-based (known_buyers table lookup)",
+      "description": "CBA Benelux relationship with this buyer",
+      "mapping": {
+        "existing_customer": 5,
+        "manageengine_incumbent": 4,
+        "lost": 3,
+        "prospect": 2,
+        "unknown": 0
+      }
+    }
+  },
+  "red_flags": {
+    "description": "Any red flag triggers auto-downgrade by ONE label (Hot→Warm, Warm→Cold, etc.)",
+    "flags": [
+      {
+        "id": "deadline_too_short",
+        "description": "Deadline < 10 days from publication (emergency/incumbent-favored)",
+        "check": "deadline_submission - publication_date < interval '10 days'"
+      },
+      {
+        "id": "invitation_only",
+        "description": "Invitation-only procedure",
+        "check": "title or summary contains 'inschrijving op uitnodiging'"
+      },
+      {
+        "id": "late_detection_nvi",
+        "description": "NvI round already occurred before first detection",
+        "check": "tender_changes has nvi_round AND created_at > nvi_round detected_at"
+      },
+      {
+        "id": "renewal_likely",
+        "description": "Title contains verlenging or optie without nieuw — incumbent has strong advantage",
+        "check": "title contains ('verlenging' OR 'optie') AND title NOT CONTAINS 'nieuw'"
+      }
+    ]
+  },
+  "auto_disqualify": {
+    "description": "These conditions immediately set label=Disqualified, skip scoring",
+    "conditions": [
+      "Country != NL",
+      "publication_type = 'gunning' (awarded notice)",
+      "estimated_value_eur < 10000",
+      "deadline_submission already passed",
+      "title contains 'verlenging' or 'optie' without 'nieuw'"
+    ]
+  }
+}

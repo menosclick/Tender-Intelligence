@@ -1,0 +1,4070 @@
+{
+  "updatedAt": "2026-07-06T22:54:46.563Z",
+  "createdAt": "2026-04-16T16:26:51.058Z",
+  "id": "AFyIJ2PzlHA469nq",
+  "name": "Tender Scraper Workflow",
+  "description": null,
+  "active": true,
+  "isArchived": false,
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 9 * * *"
+            }
+          ]
+        },
+        "timezone": "Europe/Amsterdam"
+      },
+      "id": "fae59004-6ce4-44e5-bead-d2429867203a",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "position": [
+        -768,
+        1072
+      ],
+      "typeVersion": 1.2
+    },
+    {
+      "parameters": {},
+      "id": "91016129-1433-486c-b80a-3f12b49cec3d",
+      "name": "When clicking 'Execute workflow'",
+      "type": "n8n-nodes-base.manualTrigger",
+      "position": [
+        -768,
+        864
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "url": "https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "publicatieDatumVanaf",
+              "value": "={{ new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "publicatieDatumTot",
+              "value": "={{ new Date().toISOString().split('T')[0] }}"
+            },
+            {
+              "name": "size",
+              "value": "100"
+            },
+            {
+              "name": "publicatieType",
+              "value": "AAO"
+            },
+            {
+              "name": "sort",
+              "value": "publicatieDatum,desc"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "c6e233bb-90ae-4356-aac5-858a9fdf5993",
+      "name": "Tenderned Publicaties",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        -416,
+        1072
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "RZo5oOhf9FBGqCAJ",
+          "name": "TenderNed CBA Benelux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const response = $input.item.json;\nlet publicaties = [];\nif (response.content && Array.isArray(response.content)) {\n  publicaties = response.content;\n} else if (Array.isArray(response)) {\n  publicaties = response;\n}\nif (publicaties.length === 0) {\n  return { json: { aantalPublicaties: 0, publicaties: [], bericht: 'Geen nieuwe tenders gevonden' } };\n}\n// Deduplicate by publicatieId\nconst seen = new Set();\npublicaties = publicaties.filter(p => {\n  if (!p.publicatieId || seen.has(p.publicatieId)) return false;\n  seen.add(p.publicatieId);\n  return true;\n});\nreturn { json: { aantalPublicaties: publicaties.length, publicaties: publicaties } };"
+      },
+      "id": "71723fe1-4925-46e9-9dd5-e630457b1bcc",
+      "name": "Verwerk Response",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        -80,
+        1072
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "publicaties",
+        "include": "allOtherFields",
+        "options": {}
+      },
+      "id": "1a904325-124f-494d-b52c-c9e7fe8b053b",
+      "name": "Split Out",
+      "type": "n8n-nodes-base.splitOut",
+      "position": [
+        224,
+        1072
+      ],
+      "typeVersion": 1
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "0f2b6d09-036c-446f-8d28-f3d631aa095a",
+      "name": "Loop Over Items",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        624,
+        720
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "url": "=https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties/{{ $json.publicaties.publicatieId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpBasicAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "18decb58-8e77-433b-b0a3-5a639f05c5f3",
+      "name": "Haal JSON Details",
+      "type": "n8n-nodes-base.httpRequest",
+      "position": [
+        880,
+        1072
+      ],
+      "typeVersion": 4.2,
+      "credentials": {
+        "httpBasicAuth": {
+          "id": "RZo5oOhf9FBGqCAJ",
+          "name": "TenderNed CBA Benelux"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nconst cpvCodes = [];\nif (item.cpvCodes && Array.isArray(item.cpvCodes)) {\n  item.cpvCodes.forEach(c => { if (c.code) cpvCodes.push(c.code.split('-')[0]); });\n}\nconst trefwoorden = [item.trefwoord1, item.trefwoord2, item.trefwoord3].filter(Boolean).map(t => t.replace(/\"/g, '')).join(', ');\nconst url = `https://www.tenderned.nl/aankondigingen/overzicht/${item.publicatieId}`;\nreturn { json: { json_publicatieId: item.publicatieId, json_aanbestedingNaam: item.aanbestedingNaam || '', json_opdrachtgeverNaam: item.opdrachtgeverNaam || '', json_opdrachtBeschrijving: item.opdrachtBeschrijving || '', json_publicatieDatum: item.publicatieDatum || '', json_sluitingsDatum: item.sluitingsDatum || '', json_deadline_aanvragen: item.termijnVoorOntvangstVanAanvragen || item.termijnIndienenVragen || '', json_procedure: item.procedureCode?.omschrijving || '', json_typeOpdracht: item.typeOpdrachtCode?.omschrijving || '', json_trefwoorden: trefwoorden || '-', cpv_codes: cpvCodes, cpv_main: cpvCodes[0] || null, cpv_all_text: cpvCodes.join(', '), originalLink: url, originele_data_json: JSON.stringify(item) } };"
+      },
+      "id": "d4e5f6a7-b8c9-0123-def0-123456789012",
+      "name": "Verwerk Tender",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1120,
+        1072
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.item.json;\nfunction parseDate(d) { if (!d) return null; try { return d.split('T')[0]; } catch(e) { return null; } }\nreturn { json: { external_id: String(j.json_publicatieId || ''), naam: j.json_aanbestedingNaam || '', opdrachtgever: j.json_opdrachtgeverNaam || '', publicatie_datum: parseDate(j.json_publicatieDatum), sluiting_datum: parseDate(j.json_sluitingsDatum), cpv_codes: j.cpv_all_text || '', cpv_main: j.cpv_main || null, beschrijving: j.json_opdrachtBeschrijving || '', note: '', waarde: '', deadline_vragen: parseDate(j.json_deadline_aanvragen) || '', platform: 'TenderNed', url: j.originalLink || '', trefwoorden: j.json_trefwoorden || '', procedure: j.json_procedure || '', type_opdracht: j.json_typeOpdracht || '', raw_json: j.originele_data_json || '{}' } };"
+      },
+      "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+      "name": "Prepare DB Record",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        1600,
+        1072
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "tenders_scraped"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "schema": [
+            {
+              "id": "external_id",
+              "displayName": "external_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "naam",
+              "displayName": "naam",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "opdrachtgever",
+              "displayName": "opdrachtgever",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "publicatie_datum",
+              "displayName": "publicatie_datum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "sluiting_datum",
+              "displayName": "sluiting_datum",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "cpv_codes",
+              "displayName": "cpv_codes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "cpv_main",
+              "displayName": "cpv_main",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "beschrijving",
+              "displayName": "beschrijving",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "note",
+              "displayName": "note",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "waarde",
+              "displayName": "waarde",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "deadline_vragen",
+              "displayName": "deadline_vragen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "url",
+              "displayName": "url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "trefwoorden",
+              "displayName": "trefwoorden",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "procedure",
+              "displayName": "procedure",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "type_opdracht",
+              "displayName": "type_opdracht",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "raw_json",
+              "displayName": "raw_json",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "scraped_at",
+              "displayName": "scraped_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "analyzed_at",
+              "displayName": "analyzed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {
+          "skipOnConflict": true
+        }
+      },
+      "id": "b2c3d4e5-f6a7-8901-bcde-f01234567891",
+      "name": "Save to Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        1840,
+        1072
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT DISTINCT ON (external_id)\n  id, external_id, naam, opdrachtgever, beschrijving,\n  trefwoorden, cpv_codes, cpv_main, sluiting_datum::text AS sluiting_datum,\n  url, procedure, type_opdracht, raw_json, scraped_at\nFROM tenders_scraped\nWHERE status = 'scraped' AND analyzed_at IS NULL\nORDER BY external_id, scraped_at DESC NULLS LAST\nLIMIT 200",
+        "options": {}
+      },
+      "id": "aa000001-aa00-aa00-aa00-aa0000000001",
+      "name": "Read Scraped Tenders",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        2080,
+        704
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "aa000002-aa00-aa00-aa00-aa0000000002",
+      "name": "Loop Intelligence",
+      "type": "n8n-nodes-base.splitInBatches",
+      "position": [
+        2400,
+        704
+      ],
+      "typeVersion": 3
+    },
+    {
+      "parameters": {
+        "jsCode": "const j = $input.item.json;\nreturn { json: {\n  id: j.id,\n  external_id: j.external_id,\n  title: j.naam,\n  buyer: j.opdrachtgever,\n  summary_raw: j.beschrijving,\n  trefwoorden: j.trefwoorden,\n  cpv_codes: j.cpv_codes,\n  sluiting_datum: j.sluiting_datum,\n  url: j.url,\n  procedure: j.procedure,\n  type_opdracht: j.type_opdracht,\n  score: j.score,\n  label: j.label,\n  score_breakdown: j.score_breakdown,\n  keyword_result: j.keyword_result,\n  keyword_matches: j.keyword_matches,\n  buyer_type_detected: j.buyer_type_detected,\n  red_flags: j.red_flags,\n  llm_relevance: j.llm_relevance,\n  llm_relevance_reason: j.llm_relevance_reason\n} };"
+      },
+      "id": "aa000003-aa00-aa00-aa00-aa0000000003",
+      "name": "Prepare AI Input",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        2720,
+        704
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.title + \"\\n\\nBuyer: \" + $json.buyer + \"\\n\\nDescription: \" + $json.summary_raw }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a senior procurement analyst for CBA Benelux, the premium ManageEngine partner in the Netherlands. Analyze Dutch public tenders (written in Dutch or English). Respond in English.\n\nProvide:\n- executive_summary: 2-3 sentence overview of opportunity and commercial significance\n- what_is_being_bought: Specific capabilities/systems, be concrete (not 'IT services' but 'cloud ITSM for 500 users with asset management')\n- why_it_matters: Why this purchase now, what problem it solves, IT strategy signal\n- key_requirements: Concrete specs, user counts, compliance needs, deployment model\n- possible_knockout_risks: Incumbent lock-in, budget constraints, certifications, framework agreements, unrealistic timelines\n- commercial_relevance: Deal quality - buyer credibility, budget visibility, reference potential\n- recommended_action: 'Pursue immediately' / 'Qualify further' / 'Monitor only' / 'No-bid' + next steps\n- confidence_level: High/Medium/Low\n\nFocus on what a Dutch B2B sales team needs for go/no-go. Be direct and specific."
+        }
+      },
+      "id": "4d4adc5d-94ac-4e4a-93cb-e1318e2a9053",
+      "name": "AI Tender Analysis",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3040,
+        704
+      ],
+      "continueOnFail": false,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "8dd209eb-05c8-469e-99b9-3cde7ed58f21",
+      "name": "GPT-4o Analysis Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        2960,
+        912
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "VIdXp3d5mDrTErFp",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"executive_summary\":\"2-3 sentence overview\",\"what_is_being_bought\":\"Specific system or service\",\"why_it_matters\":\"Commercial context\",\"key_requirements\":[\"Requirement 1\"],\"possible_knockout_risks\":[\"Risk 1\"],\"commercial_relevance\":\"Deal quality assessment\",\"recommended_action\":\"Pursue immediately\",\"confidence_level\":\"High\"}"
+      },
+      "id": "ac021177-6463-4a8d-93b0-04bf657586d4",
+      "name": "Analysis Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3200,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepInput = $('Prepare AI Input').item.json;\nconst analysisOutput = $input.item.json.output;\nreturn { json: {\n  id: prepInput.id,\n  external_id: prepInput.external_id,\n  naam: prepInput.title,\n  buyer: prepInput.buyer,\n  summary_raw: prepInput.summary_raw,\n  analysis_output: analysisOutput,\n  score: prepInput.score,\n  label: prepInput.label,\n  score_breakdown: prepInput.score_breakdown,\n  keyword_result: prepInput.keyword_result,\n  keyword_matches: prepInput.keyword_matches,\n  buyer_type_detected: prepInput.buyer_type_detected,\n  red_flags: prepInput.red_flags,\n  llm_relevance: prepInput.llm_relevance,\n  llm_relevance_reason: prepInput.llm_relevance_reason\n} };"
+      },
+      "id": "aa000004-aa00-aa00-aa00-aa0000000004",
+      "name": "Carry Context",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        3360,
+        704
+      ],
+      "typeVersion": 2,
+      "continueOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Tender: \" + $json.naam + \"\\nBuyer: \" + $json.buyer + \"\\nDescription: \" + $json.summary_raw + \"\\nAnalysis: \" + ($json.analysis_output?.executive_summary ?? \"\") }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are a ManageEngine product specialist for CBA Benelux (Netherlands). Map tender requirements to ManageEngine products.\n\nPORTFOLIO:\n- ServiceDesk Plus: ITSM, helpdesk, ITIL incident/problem/change, asset management, CMDB, self-service portal\n- Site24x7: Full-stack monitoring - server, cloud, network, application performance, website, synthetic\n- Applications Manager: Deep APM for Java/.NET/PHP, database monitoring, middleware, business transactions\n- OpManager: Network monitoring, infrastructure, bandwidth, device, fault management, network topology\n- Endpoint Central: Endpoint management - patch, software deployment, MDM, OS deployment, remote control\n- PAM360: Privileged access management - password vault, session recording, just-in-time access\n- Log360: SIEM - log management, security analytics, compliance, threat detection, Azure AD, Office 365\n- ADAudit Plus: Active Directory auditing, Azure AD, user behavior analytics, GDPR/BIO/NEN 7510 compliance\n\nDUTCH CONTEXT: BIO compliance (Baseline Informatiebeveiliging Overheid) is required for many NL government tenders. NEN 7510 for healthcare. GEMMA/KING standards for municipalities.\n\nProvide:\n- recommended_products: Only genuine matches, be selective\n- fit_reasoning: Map specific tender requirements to specific product capabilities\n- fit_level: High/Medium/Low\n- open_questions: Critical missing info (deployment model, incumbent, compliance framework)\n- likely_competitive_context: Who else bids? ServiceNow, TOPdesk, Datadog, Dynatrace, CyberArk, Splunk, Microsoft\n\nHonesty over optimism. A Low rating with clear reasoning beats inflated High."
+        }
+      },
+      "id": "4da4bd24-8f3c-4df8-9401-8257b9cbfa80",
+      "name": "ManageEngine Fit Engine",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        3680,
+        704
+      ],
+      "continueOnFail": false,
+      "onError": "continueRegularOutput",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "gpt-4o-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "552f588d-716e-4bae-a755-75e9b4b98be4",
+      "name": "GPT-4o Fit Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        3600,
+        912
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "VIdXp3d5mDrTErFp",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\"recommended_products\":[\"ServiceDesk Plus\"],\"fit_reasoning\":\"Maps to SDP because...\",\"fit_level\":\"High\",\"open_questions\":[\"On-premise or cloud?\"],\"likely_competitive_context\":\"ServiceNow and TOPdesk will bid\"}"
+      },
+      "id": "e3cae855-be66-4c13-a4c0-cda77189f755",
+      "name": "Fit Output Parser",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [
+        3840,
+        912
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n  const carryCtxItem = $('Carry Context').first();\n  const fitInput = $input.first();\n\n  if (!carryCtxItem || !fitInput || carryCtxItem.json.error || fitInput.json.error) {\n    const prepRaw = $('Prepare AI Input').first();\n    const pi = prepRaw ? prepRaw.json : {};\n    return { json: {\n      external_id: pi.external_id || '',\n      executive_summary: 'AI analysis failed - skipped',\n      recommended_action: 'Monitor only',\n      confidence_level: 'Low',\n      recommended_products: JSON.stringify([]),\n      fit_level: 'Low',\n      fit_reasoning: '',\n      open_questions: JSON.stringify([]),\n      likely_competitive_context: '',\n      key_requirements: JSON.stringify([]),\n      possible_knockout_risks: JSON.stringify([]),\n      commercial_relevance: '',\n      what_is_being_bought: '',\n      why_it_matters: '',\n      priority_score: 0,\n      status: 'analyzed',\n      analyzed_at: new Date().toISOString(),\n      score: pi.score || 0,\n      label: pi.label || 'Monitor',\n      score_breakdown: pi.score_breakdown || {},\n      keyword_result: pi.keyword_result || '',\n      keyword_matches: pi.keyword_matches || [],\n      buyer_type_detected: pi.buyer_type_detected || '',\n      red_flags: pi.red_flags || [],\n      llm_relevance: pi.llm_relevance || '',\n      llm_relevance_reason: (pi.llm_relevance_reason || '').substring(0, 300)\n    }};\n  }\n\n  const carryCtx = carryCtxItem.json;\n  const fitOutput = fitInput.json.output || {};\n  const analysisOutput = carryCtx.analysis_output || {};\n\n  const fitScore = { High: 3, Medium: 2, Low: 1 }[fitOutput.fit_level] || 1;\n  const actionScore = { 'Pursue immediately': 4, 'Qualify further': 3, 'Monitor only': 2, 'No-bid': 1 }[analysisOutput.recommended_action] || 1;\n  const priorityScore = fitScore * actionScore;\n\n  // Real d1 from the AI fit verdict replaces the provisional constant; recompute score + label.\n  // Hot requires BOTH strong product fit and good conditions - this is what gates Prompt C.\n  const bd = Object.assign({}, carryCtx.score_breakdown || {});\n  const d1Map = { High: 15, Medium: 8, Low: 2 };\n  const d1New = d1Map[fitOutput.fit_level] !== undefined ? d1Map[fitOutput.fit_level] : 8;\n  const oldD1 = typeof bd.d1 === 'number' ? bd.d1 : 15;\n  bd.d1 = d1New;\n  const finalScore = (carryCtx.score || 0) - oldD1 + d1New;\n  const flags = carryCtx.red_flags || [];\n  let finalLabel;\n  if (flags.includes('deadline_passed')) {\n    finalLabel = 'Disqualified';\n  } else {\n    finalLabel = finalScore >= 40 ? 'Warm' : finalScore >= 20 ? 'Cold' : 'Monitor';\n    if (fitOutput.fit_level === 'High' && finalScore >= 50) finalLabel = 'Hot';\n    if (flags.length > 0) {\n      const ladder = ['Monitor', 'Cold', 'Warm', 'Hot'];\n      finalLabel = ladder[Math.max(0, ladder.indexOf(finalLabel) - 1)];\n    }\n  }\n\n  return { json: {\n    external_id: carryCtx.external_id,\n    executive_summary: analysisOutput.executive_summary || '',\n    what_is_being_bought: analysisOutput.what_is_being_bought || '',\n    why_it_matters: analysisOutput.why_it_matters || '',\n    key_requirements: JSON.stringify(analysisOutput.key_requirements || []),\n    possible_knockout_risks: JSON.stringify(analysisOutput.possible_knockout_risks || []),\n    commercial_relevance: analysisOutput.commercial_relevance || '',\n    recommended_action: (analysisOutput.recommended_action || '').substring(0, 50),\n    confidence_level: (analysisOutput.confidence_level || '').substring(0, 20),\n    recommended_products: JSON.stringify(fitOutput.recommended_products || []),\n    fit_reasoning: fitOutput.fit_reasoning || '',\n    fit_level: (fitOutput.fit_level || '').substring(0, 20),\n    open_questions: JSON.stringify(fitOutput.open_questions || []),\n    likely_competitive_context: fitOutput.likely_competitive_context || '',\n    priority_score: priorityScore,\n    status: 'analyzed',\n    analyzed_at: new Date().toISOString(),\n    score: finalScore,\n    label: finalLabel,\n    score_breakdown: bd,\n    keyword_result: carryCtx.keyword_result || '',\n    keyword_matches: carryCtx.keyword_matches || [],\n    buyer_type_detected: carryCtx.buyer_type_detected || '',\n    red_flags: carryCtx.red_flags || [],\n    llm_relevance: carryCtx.llm_relevance || '',\n    llm_relevance_reason: (carryCtx.llm_relevance_reason || '').substring(0, 300)\n  }};\n} catch(e) {\n  const prepRaw = $('Prepare AI Input').first();\n  const pi = prepRaw ? prepRaw.json : {};\n  return { json: {\n    external_id: pi.external_id || '',\n    executive_summary: 'Analysis error: ' + e.message,\n    recommended_action: 'Monitor only',\n    confidence_level: 'Low',\n    recommended_products: JSON.stringify([]),\n    fit_level: 'Low',\n    fit_reasoning: '',\n    open_questions: JSON.stringify([]),\n    likely_competitive_context: '',\n    key_requirements: JSON.stringify([]),\n    possible_knockout_risks: JSON.stringify([]),\n    commercial_relevance: '',\n    what_is_being_bought: '',\n    why_it_matters: '',\n    priority_score: 0,\n    status: 'analyzed',\n    analyzed_at: new Date().toISOString(),\n    score: pi.score || 0,\n    label: pi.label || 'Monitor',\n    score_breakdown: pi.score_breakdown || {},\n    keyword_result: pi.keyword_result || '',\n    keyword_matches: pi.keyword_matches || [],\n    buyer_type_detected: pi.buyer_type_detected || '',\n    red_flags: pi.red_flags || [],\n    llm_relevance: pi.llm_relevance || '',\n    llm_relevance_reason: (pi.llm_relevance_reason || '').substring(0, 300)\n  }};\n}"
+      },
+      "id": "aa000005-aa00-aa00-aa00-aa0000000005",
+      "name": "Merge Analysis",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        4000,
+        704
+      ],
+      "typeVersion": 2,
+      "continueOnFail": false,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "upsert",
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "list",
+          "value": "tenders_scraped"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [
+            "external_id"
+          ],
+          "schema": [
+            {
+              "id": "external_id",
+              "displayName": "external_id",
+              "required": true,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "executive_summary",
+              "displayName": "executive_summary",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "what_is_being_bought",
+              "displayName": "what_is_being_bought",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "why_it_matters",
+              "displayName": "why_it_matters",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "key_requirements",
+              "displayName": "key_requirements",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "possible_knockout_risks",
+              "displayName": "possible_knockout_risks",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "commercial_relevance",
+              "displayName": "commercial_relevance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "recommended_action",
+              "displayName": "recommended_action",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "confidence_level",
+              "displayName": "confidence_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "recommended_products",
+              "displayName": "recommended_products",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "fit_reasoning",
+              "displayName": "fit_reasoning",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "fit_level",
+              "displayName": "fit_level",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "open_questions",
+              "displayName": "open_questions",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "likely_competitive_context",
+              "displayName": "likely_competitive_context",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "priority_score",
+              "displayName": "priority_score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "analyzed_at",
+              "displayName": "analyzed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "score",
+              "displayName": "score",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "label",
+              "displayName": "label",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "score_breakdown",
+              "displayName": "score_breakdown",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "keyword_result",
+              "displayName": "keyword_result",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "keyword_matches",
+              "displayName": "keyword_matches",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "buyer_type_detected",
+              "displayName": "buyer_type_detected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "red_flags",
+              "displayName": "red_flags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "llm_relevance",
+              "displayName": "llm_relevance",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            },
+            {
+              "id": "llm_relevance_reason",
+              "displayName": "llm_relevance_reason",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": false,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": true,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "aa000006-aa00-aa00-aa00-aa0000000006",
+      "name": "Update Postgres",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        5180,
+        640
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM (\n  SELECT DISTINCT ON (external_id) naam, opdrachtgever, sluiting_datum::text AS sluiting_datum,\n    recommended_action, fit_level, priority_score, executive_summary, recommended_products, url, external_id,\n    score, label, buyer_type_detected, red_flags,\n    route_to_market, reseller_name, route_first_action\n  FROM tenders_scraped\n  WHERE status = 'analyzed'\n    AND analyzed_at >= NOW() - INTERVAL '24 hours'\n    AND label IN ('Hot', 'Warm')\n  ORDER BY external_id, score DESC NULLS LAST\n) deduped\nORDER BY CASE WHEN label = 'Hot' THEN 0 ELSE 1 END ASC, score DESC NULLS LAST",
+        "options": {}
+      },
+      "id": "aa000007-aa00-aa00-aa00-aa0000000007",
+      "name": "Read Analyzed Today",
+      "type": "n8n-nodes-base.postgres",
+      "position": [
+        4480,
+        704
+      ],
+      "typeVersion": 2.5,
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nif (items.length === 0) return [];\nconst rows = items.map(i => i.json);\nconst hot = rows.filter(r => r.label === 'Hot');\nconst warm = rows.filter(r => r.label === 'Warm');\n\nfunction formatTender(t) {\n  const color = t.label === 'Hot' ? '#dc2626' : '#d97706';\n  let products = '';\n  try { products = JSON.parse(t.recommended_products || '[]').join(', '); } catch(e) { products = String(t.recommended_products || ''); }\n  const flags = Array.isArray(t.red_flags) ? t.red_flags : [];\n  const flagLine = flags.length ? '<br/><span style=\"color:#dc2626\">Risico: ' + flags.join(', ') + '</span>' : '';\n  const routeLine = (t.route_to_market && t.label === 'Hot')\n    ? '<br/><strong style=\"color:#1d4ed8\">Route: ' + t.route_to_market + (t.reseller_name ? ' (' + t.reseller_name + ')' : '') + '</strong>' +\n      (t.route_first_action ? '<br/><em>Eerste stap: ' + t.route_first_action + '</em>' : '')\n    : '';\n  const outreachBlock = (t.reseller_outreach_draft && t.label === 'Hot')\n    ? '<div style=\"margin-top:8px;background:#f0f4ff;border-left:3px solid #1d4ed8;padding:8px;font-size:13px;\"><strong>Borrador reseller:</strong><br/>' + t.reseller_outreach_draft + '</div>'\n    : '';\n  return '<div style=\"margin-bottom:24px;border-left:4px solid ' + color + ';padding-left:12px;\">' +\n    '<strong>' + (t.naam || '') + '</strong> &mdash; ' + (t.opdrachtgever || '') + '<br/>' +\n    '<em>Sluiting: ' + (t.sluiting_datum || 'onbekend') + ' | Score: ' + (t.score || 0) + ' | Label: ' + (t.label || '') + '</em><br/>' +\n    '<em>Producten: ' + (products || 'n.v.t.') + ' | Fit: ' + (t.fit_level || 'n.v.t.') + '</em>' + flagLine + routeLine + outreachBlock + '<br/>' +\n    (t.executive_summary || '') + '<br/>' +\n    (t.recommended_action ? '<strong>Actie: ' + t.recommended_action + '</strong><br/>' : '') +\n    '<a href=\"' + (t.url || '') + '\">TenderNed</a></div>';\n}\n\nconst dateStr = new Date().toLocaleDateString('nl-NL');\nconst html = '<h2>CBA Tender Intelligence &mdash; ' + dateStr + '</h2>' +\n  '<p><strong>' + rows.length + ' relevante tenders</strong> | Hot: ' + hot.length + ' | Warm: ' + warm.length + '</p>' +\n  (hot.length ? '<h3 style=\"color:#dc2626\">Hot (' + hot.length + ')</h3>' + hot.map(formatTender).join('') : '') +\n  (warm.length ? '<h3 style=\"color:#d97706\">Warm (' + warm.length + ')</h3>' + warm.map(formatTender).join('') : '');\n\nconst subject = 'Tender Intel ' + dateStr + ' - ' + hot.length + ' Hot, ' + warm.length + ' Warm';\nreturn [{ json: { subject, body: html } }];"
+      },
+      "id": "aa000008-aa00-aa00-aa00-aa0000000008",
+      "name": "Format Daily Brief",
+      "type": "n8n-nodes-base.code",
+      "position": [
+        4720,
+        704
+      ],
+      "typeVersion": 2
+    },
+    {
+      "parameters": {
+        "sendTo": "derson@cbabenelux.com",
+        "subject": "={{ $json.subject }}",
+        "message": "={{ $json.body }}",
+        "options": {
+          "emailType": "html"
+        }
+      },
+      "id": "aa000009-aa00-aa00-aa00-aa0000000009",
+      "name": "Send Email Gmail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        4960,
+        704
+      ],
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "mEHXfGEi90CAlu6p",
+          "name": "Gmail account"
+        }
+      },
+      "webhookId": "0032b19f-5914-4aa5-9a73-5b900ad01182"
+    },
+    {
+      "parameters": {
+        "authentication": "oAuth2",
+        "select": "user",
+        "user": {
+          "__rl": true,
+          "value": "U09JMELT5QB",
+          "mode": "list",
+          "cachedResultName": "derson"
+        },
+        "text": "={{ $json.subject + ' - brief sent to derson@cbabenelux.com' }}",
+        "otherOptions": {}
+      },
+      "id": "aa000010-aa00-aa00-aa00-aa0000000010",
+      "name": "Slack Alert",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 2.3,
+      "position": [
+        4960,
+        880
+      ],
+      "credentials": {
+        "slackOAuth2Api": {
+          "id": "cbs8xtL1yp3dKJDL",
+          "name": "Slack OAuth2 API"
+        }
+      },
+      "continueOnFail": false,
+      "onError": "continueRegularOutput",
+      "webhookId": "18172cf4-92aa-4a83-b8ce-b2c4712b62d7"
+    },
+    {
+      "id": "kf000001-0000-0000-0000-000000000001",
+      "name": "Keyword Filter",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2560,
+        1100
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.item.json;\nconst text = [j.naam, j.beschrijving, j.trefwoorden].filter(Boolean).join(' ').toLowerCase();\n\nconst negKw = [\n  'schoonmaak','schoonmaakdiensten','catering','fysieke beveiliging','bewaking',\n  'bouw','verbouw','renovatie','sloopwerkzaamheden','groenvoorziening','groenonderhoud',\n  'vervoer','transport','personeelsvervoer','inhuur personeel','uitzendkrachten',\n  'thuiszorg','hulp bij huishouden','afvalverwerking','rioolbeheer','wegenbouw',\n  'civieltechnisch','drukwerk','kantoorartikelen',\n  'physical security','construction work','landscaping','staffing agency','waste management','road construction'\n];\n\nif (negKw.some(kw => text.includes(kw))) {\n  return { json: { ...j, keyword_result: 'DISQUALIFY', keyword_matches: [], kw_negative_hit: true } };\n}\n\nconst posKw = [\n  'servicedesk','service desk','helpdesk','help desk','itsm','itil',\n  'service management','servicemanagement','it service management','meldingenbeheer',\n  'incidentbeheer','incident management','probleembeheer','wijzigingsbeheer',\n  'change management','cmdb','configuration management database','kennisbank',\n  'asset management','it asset management','contractbeheer','slm',\n  'monitoring','monitoringtool','monitoring tool','netwerkmonitoring',\n  'infrastructuurmonitoring','applicatiemonitoring','observability','alerting',\n  'uptime','noc','apm','log management','event management','systeembeheer',\n  'wachtwoordkluis','wachtwoordbeheer','wachtwoordmanager','password management','password manager',\n  'privileged access management','pam','enterprise password vault','password vault',\n  'bevoorrechte toegang','sessiebeheer','identity management','gebruikersbeheer',\n  'active directory beheer','active directory audit','ad audit','toegangsbeheer','iam','siem',\n  'patch management','patchbeheer','mdm','mobile device management','endpoint management','endpoint central',\n  'netwerkbeheer','netwerk management','network management','netwerk monitoring',\n  'it-beheer','it beheer','it operaties','it operations','itom',\n  'kwetsbaarheidsbeheer','vulnerability management','remote monitoring','remote beheer',\n  'apparaatbeheer','device management','zero trust','privileged account'\n];\n\nconst matches = posKw.filter(kw => text.includes(kw));\nconst result = matches.length >= 2 ? 'PASS' : matches.length === 1 ? 'AMBIGUOUS' : 'DISQUALIFY';\n\nreturn { json: { ...j, keyword_result: result, keyword_matches: matches, kw_negative_hit: false } };"
+      }
+    },
+    {
+      "id": "mn000001-0000-0000-0000-000000000001",
+      "name": "Mark No Match",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        2900,
+        1280
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE tenders_scraped SET\n  status = 'analyzed',\n  fit_level = 'Low',\n  recommended_action = 'No-bid',\n  executive_summary = 'Auto-filtered: no relevant keywords or classified not relevant.',\n  priority_score = 0,\n  analyzed_at = NOW(),\n  label = 'Disqualified',\n  keyword_result = '{{ $json.keyword_result }}'\nWHERE id = {{ $json.id }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "aa100001-0000-0000-0000-000000000000",
+      "name": "Route on Keyword Result",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        2720,
+        1100
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "kw-pass-001",
+                    "leftValue": "={{ $json.keyword_result }}",
+                    "rightValue": "PASS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "PASS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "kw-ambi-001",
+                    "leftValue": "={{ $json.keyword_result }}",
+                    "rightValue": "AMBIGUOUS",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "AMBIGUOUS"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "kw-disq-001",
+                    "leftValue": "={{ $json.keyword_result }}",
+                    "rightValue": "DISQUALIFY",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "DISQUALIFY"
+            }
+          ]
+        },
+        "options": {
+          "fallbackOutput": "extra"
+        }
+      }
+    },
+    {
+      "id": "aa100002-0000-0000-0000-000000000000",
+      "name": "Score Tender",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        1000
+      ],
+      "parameters": {
+        "jsCode": "const item = $input.item.json;\nfunction norm(s) { return (s||'').toLowerCase(); }\nconst now = new Date();\nconst bd = {};\nbd.d1 = 15;\nlet d2 = 2;\ntry {\n  const raw = typeof item.raw_json === 'string' ? JSON.parse(item.raw_json) : (item.raw_json || {});\n  const v = parseFloat(raw.raamovereenkomstWaarde || raw.opdrachtwaarde || raw.totaleWaarde || 0);\n  if (v >= 500000) d2 = 20;\n  else if (v >= 200000) d2 = 15;\n  else if (v >= 100000) d2 = 10;\n  else if (v >= 50000) d2 = 5;\n} catch(e) {}\nbd.d2 = d2;\nconst proc = norm(item.procedure);\nbd.d3 = proc.includes('openbaar') ? 15 : proc.includes('versneld') ? 13 : proc.includes('niet-openbaar') ? 12 : proc.includes('onderhandeling') ? 10 : proc.includes('mini-competitie') ? 6 : 8;\nconst buyer = norm(item.opdrachtgever);\nconst authMap = [[['rijkswaterstaat','ministerie','belastingdienst','cibg','rvo'],'rijksoverheid',15],[['politie'],'politie',14],[['defensie'],'defensie',14],[['provincie'],'provincie',13],[['gemeente amsterdam','gemeente rotterdam','gemeente den haag','gemeente utrecht'],'grote gemeente',13],[['hogeschool','universiteit','mbo'],'onderwijs',12],[['ziekenhuis','umc'],'zorg',11],[['waterschap'],'waterschap',9],[['gemeente'],'gemeente',7]];\nlet d4 = 5, buyerType = 'overig';\nfor (const [keys, type, pts] of authMap) { if (keys.some(k => buyer.includes(k))) { d4 = pts; buyerType = type; break; } }\nbd.d4 = d4;\nconst dlWeeks = item.sluiting_datum ? (new Date(item.sluiting_datum) - now) / 6048e5 : null;\nbd.d5 = dlWeeks === null ? 5 : dlWeeks >= 6 ? 10 : dlWeeks >= 3 ? 7 : dlWeeks >= 2 ? 4 : dlWeeks >= 0 ? 1 : 0;\nconst hrs = item.scraped_at ? (now - new Date(item.scraped_at)) / 36e5 : null;\nbd.d6 = !hrs || hrs <= 48 ? 5 : hrs <= 120 ? 3 : 1;\nbd.d7 = 0;\nconst rawScore = bd.d1+bd.d2+bd.d3+bd.d4+bd.d5+bd.d6+bd.d7;\nconst flags = [];\nconst tn = norm(item.naam);\nif (dlWeeks !== null && dlWeeks < 1.5) flags.push('deadline_too_short');\nif (dlWeeks !== null && dlWeeks < 0) flags.push('deadline_passed');\nif ((tn.includes('verlenging')||tn.includes(' optie '))&&!tn.includes('nieuw')) flags.push('renewal_likely');\nconst rawLabel = rawScore >= 70 ? 'Hot' : rawScore >= 45 ? 'Warm' : rawScore >= 20 ? 'Cold' : 'Monitor';\nconst ladder = ['Monitor','Cold','Warm','Hot'];\nlet label = flags.length > 0 ? (ladder[Math.max(0,ladder.indexOf(rawLabel)-1)]) : rawLabel;\nif (flags.includes('deadline_passed')) label = 'Disqualified';\nreturn { json: { ...item, score: rawScore, label, score_breakdown: bd, red_flags: flags, buyer_type_detected: buyerType } };"
+      }
+    },
+    {
+      "id": "aa100003-0000-0000-0000-000000000000",
+      "name": "Route on Label",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        3040,
+        1000
+      ],
+      "parameters": {
+        "mode": "rules",
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "needs-ai-001",
+                    "leftValue": "={{ ['Hot','Warm'].includes($json.label) }}",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "Needs AI"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "version": 2
+                },
+                "combinator": "and",
+                "conditions": [
+                  {
+                    "id": "no-ai-001",
+                    "leftValue": "={{ ['Cold','Monitor','Disqualified'].includes($json.label) }}",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ]
+              },
+              "renameOutput": true,
+              "outputKey": "No AI"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "aa100004-0000-0000-0000-000000000000",
+      "name": "Build Cold Update",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        1150
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.item.json;\nfunction s(v) { if (v===null||v===undefined) return 'NULL'; return \"'\" + String(v).replace(/'/g,\"''\") + \"'\"; }\nfunction arrStr(a) { if (!a||a.length===0) return \"ARRAY[]::text[]\"; return \"ARRAY[\" + a.map(x=>s(x)).join(',') + \"]::text[]\"; }\nconst sql = [\"UPDATE tenders_scraped SET\",\"  status = 'analyzed',\",\"  analyzed_at = NOW(),\",\"  score = \"+(j.score||0)+\",\",\"  label = \"+s(j.label)+\",\",\"  score_breakdown = \"+s(JSON.stringify(j.score_breakdown||{}))+ \"::jsonb,\",\"  keyword_result = \"+s(j.keyword_result)+\",\",\"  keyword_matches = \"+arrStr(j.keyword_matches)+\",\",\"  buyer_type_detected = \"+s(j.buyer_type_detected)+\",\",\"  red_flags = \"+arrStr(j.red_flags),\"WHERE id = \"+j.id].join('\\n');\nreturn { json: { ...j, _cold_sql: sql } };"
+      }
+    },
+    {
+      "id": "aa100005-0000-0000-0000-000000000000",
+      "name": "Update PG Cold",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3360,
+        1150
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "={{ $json._cold_sql }}",
+        "options": {}
+      },
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "continueOnFail": true
+    },
+    {
+      "id": "aa100006-0000-0000-0000-000000000000",
+      "name": "Build Prompt A",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2880,
+        1350
+      ],
+      "parameters": {
+        "jsCode": "const j = $input.item.json;\nconst sys = 'You are a Dutch public procurement classifier. Determine whether a tender is relevant to a Dutch IT software vendor selling ITSM, monitoring, PAM, and endpoint management tools.\\n\\nManageEngine products in scope:\\n- ServiceDesk Plus (ITSM, service desk, incident/problem/change management, CMDB)\\n- OpManager / Applications Manager (network monitoring, infrastructure monitoring, availability)\\n- PAM360 / Password Manager Pro (privileged access management, password vaulting)\\n- ADManager Plus (Active Directory management)\\n- Endpoint Central (endpoint management, MDM, patch management)\\n\\nA tender is RELEVANT if the contracting authority is purchasing software or services that directly map to one of these product categories.\\nA tender is NOT RELEVANT if it is about physical construction, staffing, catering, general consulting without IT tools, or domains clearly outside ITSM/ITOM/PAM/endpoint.\\n\\nRespond with JSON only: {\"relevant\": true, \"confidence\": \"high\", \"reason\": \"one sentence\"}';\nconst usr = 'Title: '+(j.naam||'')+'\\nBuyer: '+(j.opdrachtgever||'')+'\\nCPV: '+(j.cpv_codes||'')+'\\nDescription: '+(j.beschrijving||'').substring(0,500);\nreturn { json: { ...j, _oai_body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 150, temperature: 0, messages: [{ role: 'system', content: sys },{ role: 'user', content: usr }] }) } };"
+      }
+    },
+    {
+      "id": "aa100007-0000-0000-0000-000000000000",
+      "name": "Call OpenAI Prompt A",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3040,
+        1350
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._oai_body }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "VIdXp3d5mDrTErFp",
+          "name": "OpenAi account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "aa100008-0000-0000-0000-000000000000",
+      "name": "Parse Prompt A",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        1350
+      ],
+      "parameters": {
+        "jsCode": "const src = { ...$('Build Prompt A').item.json };\ndelete src._oai_body;\ntry {\n  const choices = $input.item.json.choices;\n  const content = choices && choices[0] && choices[0].message && choices[0].message.content;\n  const r = JSON.parse(content);\n  return { json: { ...src, llm_relevance: r.relevant ? 'RELEVANT' : 'NOT_RELEVANT', llm_relevance_reason: (r.reason||'').substring(0,300) } };\n} catch(e) {\n  return { json: { ...src, llm_relevance: 'RELEVANT', llm_relevance_reason: 'parse_error: '+e.message } };\n}"
+      }
+    },
+    {
+      "id": "aa100009-0000-0000-0000-000000000000",
+      "name": "Route on Relevance",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3360,
+        1350
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "relevance-001",
+              "leftValue": "={{ $json.llm_relevance }}",
+              "rightValue": "RELEVANT",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pc000001-0000-0000-0000-000000000001",
+      "name": "IF Hot?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4220,
+        704
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "version": 2,
+            "caseSensitive": true,
+            "typeValidation": "strict"
+          },
+          "combinator": "and",
+          "conditions": [
+            {
+              "id": "hot-check",
+              "leftValue": "={{ $json.label }}",
+              "rightValue": "Hot",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "pc000002-0000-0000-0000-000000000002",
+      "name": "Build Prompt C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4460,
+        520
+      ],
+      "parameters": {
+        "jsCode": "const ma = $input.item.json;\nconst pi = $('Prepare AI Input').item.json;\nconst sys = 'You are a channel sales strategist for ManageEngine in the Netherlands.\\nCBA Benelux is a premium ManageEngine partner operating in the Benelux.\\n\\nFRAMEWORK AGREEMENT CONTEXT:\\n- EA2023: The dominant Dutch government software procurement framework. Authorized resellers include SoftwareOne, ProtinusIT, and Dustin. If a buyer procures via EA2023, CBA CANNOT bid directly.\\n- EASP2020-2: CBA is a participant and can bid more directly.\\n- Open procedure: CBA bids directly.\\n- Mini-competition: Go via SoftwareOne, ProtinusIT, or Dustin.\\n\\nRESELLER SELECTION GUIDE:\\n- SoftwareOne: Large enterprise and central government (ministeries, rijksoverheid, politie, defensie)\\n- ProtinusIT: Mid-market, municipalities (gemeenten), education (onderwijs), healthcare (zorg)\\n- Dustin: Mixed portfolio, smaller government and public sector\\n- If unclear: use Via EA2023 reseller (TBD)\\n\\nROUTES:\\n1. Direct CBA - open procedure or CBA is framework party\\n2. Via SoftwareOne - EA2023, large central government\\n3. Via ProtinusIT - EA2023, municipality/education/healthcare\\n4. Via Dustin - EA2023, smaller public sector\\n5. Via EA2023 reseller (TBD) - EA2023 confirmed, reseller unclear\\n6. ManageEngine direct - very large enterprise\\n7. Consortium/SI - requires a systems integrator\\n\\nRespond with JSON only. No explanations outside the JSON.';\nconst cpvStr = Array.isArray(pi.cpv_codes) ? pi.cpv_codes.join(', ') : (pi.cpv_codes || '');\nconst usr = 'Tender: ' + (pi.title || '') + '\\nBuyer: ' + (pi.buyer || '') + ' (' + (ma.buyer_type_detected || '') + ')\\nProcedure: ' + (pi.procedure || '') + '\\nScore: ' + ma.score + ' | Label: ' + ma.label + '\\nCPV: ' + cpvStr + '\\n\\nAI Analysis:\\n- Products identified: ' + (ma.recommended_products || '[]') + '\\n- Fit level: ' + (ma.fit_level || '') + '\\n- Competitive context: ' + (ma.likely_competitive_context || '') + '\\n- AI recommendation: ' + (ma.recommended_action || '') + '\\n\\nReturn JSON only. Use this exact structure:\\n{\"route\":\"Direct CBA|Via SoftwareOne|Via ProtinusIT|Via Dustin|Via EA2023 reseller (TBD)|ManageEngine direct|Consortium/SI\",\"reseller_name\":\"SoftwareOne or ProtinusIT or Dustin or null\",\"reasoning\":\"2-3 sentences.\",\"first_action\":\"Most important next step.\",\"reseller_outreach_draft\":\"3-sentence email body or null if Direct CBA\"}';\nreturn { json: { ...ma, _oai_body_c: JSON.stringify({ model: 'gpt-4o', max_tokens: 500, temperature: 0.2, messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }] }) } };"
+      }
+    },
+    {
+      "id": "pc000003-0000-0000-0000-000000000003",
+      "name": "Call OpenAI Prompt C",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        4700,
+        520
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.openai.com/v1/chat/completions",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "openAiApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json._oai_body_c }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "VIdXp3d5mDrTErFp",
+          "name": "OpenAi account"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "id": "pc000004-0000-0000-0000-000000000004",
+      "name": "Parse Route C",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4940,
+        520
+      ],
+      "parameters": {
+        "jsCode": "const httpResp = $input.item.json;\nconst buildItem = $('Build Prompt C').item.json;\nlet route_to_market = null, reseller_name = null, route_reasoning = null, route_first_action = null, reseller_outreach_draft = null;\ntry {\n  const raw = httpResp.choices[0].message.content;\n  const clean = raw.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const parsed = JSON.parse(clean);\n  route_to_market = parsed.route || null;\n  reseller_name = (parsed.reseller_name === 'null' || !parsed.reseller_name) ? null : parsed.reseller_name;\n  route_reasoning = parsed.reasoning || null;\n  route_first_action = parsed.first_action || null;\n  reseller_outreach_draft = (parsed.reseller_outreach_draft === 'null' || !parsed.reseller_outreach_draft) ? null : parsed.reseller_outreach_draft;\n} catch(e) {\n  route_reasoning = 'Parse error: ' + e.message;\n}\nconst { _oai_body_c, ...rest } = buildItem;\nreturn { json: { ...rest, route_to_market, reseller_name, route_reasoning, route_first_action, reseller_outreach_draft } };"
+      }
+    },
+    {
+      "id": "collapse001-0000-0000-0000-000000000001",
+      "name": "Collapse to One",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2100,
+        900
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "return [{ json: {} }];"
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT total_adjustment::float AS total_adjustment, applied FROM get_score_adjustment($1, $2);",
+        "options": {
+          "queryReplacement": "={{ $json.buyer_type_detected || '' }},{{ $json.cpv_main || '' }}"
+        }
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.5,
+      "position": [
+        3040,
+        1180
+      ],
+      "id": "b7e3a1c2-4f5d-4e6a-9b8c-1d2e3f4a5b6c",
+      "name": "Get Score Adjustment",
+      "credentials": {
+        "postgres": {
+          "id": "3LyxFWPy5v9bl0Zm",
+          "name": "Supabase Postgres - CBA Tenders"
+        }
+      },
+      "retryOnFail": true,
+      "maxTries": 2,
+      "waitBetweenTries": 2000,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const tender = { ...$('Score Tender').item.json };\nconst a = $input.item.json || {};\nlet adj = parseFloat(a.total_adjustment);\nif (!isFinite(adj)) adj = 0;\nconst applied = Array.isArray(a.applied) ? a.applied : [];\nconst score = (tender.score || 0) + adj;\nconst flags = tender.red_flags || [];\nconst rawLabel = score >= 70 ? 'Hot' : score >= 45 ? 'Warm' : score >= 20 ? 'Cold' : 'Monitor';\nconst ladder = ['Monitor','Cold','Warm','Hot'];\nlet label = flags.length > 0 ? ladder[Math.max(0, ladder.indexOf(rawLabel)-1)] : rawLabel;\nif (flags.includes('deadline_passed')) label = 'Disqualified';\nreturn { json: { ...tender, score, label, score_adjustment: adj, adjustments_applied: applied } };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3200,
+        1180
+      ],
+      "id": "c8f4b2d3-5a6e-4f7b-8c9d-2e3f4a5b6c7d",
+      "name": "Apply Learned Adjustment"
+    }
+  ],
+  "connections": {
+    "When clicking 'Execute workflow'": {
+      "main": [
+        [
+          {
+            "node": "Tenderned Publicaties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Tenderned Publicaties",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tenderned Publicaties": {
+      "main": [
+        [
+          {
+            "node": "Verwerk Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verwerk Response": {
+      "main": [
+        [
+          {
+            "node": "Split Out",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Split Out": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [
+          {
+            "node": "Read Scraped Tenders",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Haal JSON Details",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Haal JSON Details": {
+      "main": [
+        [
+          {
+            "node": "Verwerk Tender",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare DB Record": {
+      "main": [
+        [
+          {
+            "node": "Save to Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save to Postgres": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Scraped Tenders": {
+      "main": [
+        [
+          {
+            "node": "Loop Intelligence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Intelligence": {
+      "main": [
+        [
+          {
+            "node": "Collapse to One",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Keyword Filter",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare AI Input": {
+      "main": [
+        [
+          {
+            "node": "AI Tender Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Analysis Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Tender Analysis",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Analysis Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "AI Tender Analysis",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Tender Analysis": {
+      "main": [
+        [
+          {
+            "node": "Carry Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Carry Context": {
+      "main": [
+        [
+          {
+            "node": "ManageEngine Fit Engine",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GPT-4o Fit Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "ManageEngine Fit Engine",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fit Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "ManageEngine Fit Engine",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ManageEngine Fit Engine": {
+      "main": [
+        [
+          {
+            "node": "Merge Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update Postgres": {
+      "main": [
+        [
+          {
+            "node": "Loop Intelligence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Analyzed Today": {
+      "main": [
+        [
+          {
+            "node": "Format Daily Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Daily Brief": {
+      "main": [
+        [
+          {
+            "node": "Send Email Gmail",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Slack Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark No Match": {
+      "main": [
+        [
+          {
+            "node": "Loop Intelligence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keyword Filter": {
+      "main": [
+        [
+          {
+            "node": "Route on Keyword Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route on Keyword Result": {
+      "main": [
+        [
+          {
+            "node": "Score Tender",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Prompt A",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark No Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Score Tender": {
+      "main": [
+        [
+          {
+            "node": "Get Score Adjustment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route on Label": {
+      "main": [
+        [
+          {
+            "node": "Prepare AI Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Build Cold Update",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Cold Update": {
+      "main": [
+        [
+          {
+            "node": "Update PG Cold",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Update PG Cold": {
+      "main": [
+        [
+          {
+            "node": "Loop Intelligence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt A": {
+      "main": [
+        [
+          {
+            "node": "Call OpenAI Prompt A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenAI Prompt A": {
+      "main": [
+        [
+          {
+            "node": "Parse Prompt A",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Prompt A": {
+      "main": [
+        [
+          {
+            "node": "Route on Relevance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route on Relevance": {
+      "main": [
+        [
+          {
+            "node": "Score Tender",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Mark No Match",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Analysis": {
+      "main": [
+        [
+          {
+            "node": "IF Hot?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Hot?": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt C",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt C": {
+      "main": [
+        [
+          {
+            "node": "Call OpenAI Prompt C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Call OpenAI Prompt C": {
+      "main": [
+        [
+          {
+            "node": "Parse Route C",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Route C": {
+      "main": [
+        [
+          {
+            "node": "Update Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collapse to One": {
+      "main": [
+        [
+          {
+            "node": "Read Analyzed Today",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verwerk Tender": {
+      "main": [
+        [
+          {
+            "node": "Prepare DB Record",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Score Adjustment": {
+      "main": [
+        [
+          {
+            "node": "Apply Learned Adjustment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply Learned Adjustment": {
+      "main": [
+        [
+          {
+            "node": "Route on Label",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timeSavedMode": "fixed",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": true,
+    "errorWorkflow": "fs7DKAix5cDLc8vA"
+  },
+  "staticData": {
+    "node:Schedule Trigger": {
+      "recurrenceRules": []
+    }
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "d130ab26-4d36-4216-918f-261c123afa34",
+  "activeVersionId": "d130ab26-4d36-4216-918f-261c123afa34",
+  "versionCounter": 164,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-04-16T16:26:51.060Z",
+      "createdAt": "2026-04-16T16:26:51.060Z",
+      "role": "workflow:owner",
+      "workflowId": "AFyIJ2PzlHA469nq",
+      "projectId": "Kd7OZliyPfjMBNsf",
+      "project": {
+        "updatedAt": "2025-06-09T13:14:48.875Z",
+        "createdAt": "2025-05-07T19:49:00.078Z",
+        "id": "Kd7OZliyPfjMBNsf",
+        "name": "Deivy Ramos <microempresariosia@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "dce01fe1-a34b-4d51-bd1b-b4f2ed944774"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-07-06T22:54:46.568Z",
+    "createdAt": "2026-07-06T22:54:46.568Z",
+    "versionId": "d130ab26-4d36-4216-918f-261c123afa34",
+    "workflowId": "AFyIJ2PzlHA469nq",
+    "nodes": [
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 9 * * *"
+              }
+            ]
+          },
+          "timezone": "Europe/Amsterdam"
+        },
+        "id": "fae59004-6ce4-44e5-bead-d2429867203a",
+        "name": "Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "position": [
+          -768,
+          1072
+        ],
+        "typeVersion": 1.2
+      },
+      {
+        "parameters": {},
+        "id": "91016129-1433-486c-b80a-3f12b49cec3d",
+        "name": "When clicking 'Execute workflow'",
+        "type": "n8n-nodes-base.manualTrigger",
+        "position": [
+          -768,
+          864
+        ],
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "url": "https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBasicAuth",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "publicatieDatumVanaf",
+                "value": "={{ new Date(Date.now() - 2 * 86400000).toISOString().split('T')[0] }}"
+              },
+              {
+                "name": "publicatieDatumTot",
+                "value": "={{ new Date().toISOString().split('T')[0] }}"
+              },
+              {
+                "name": "size",
+                "value": "100"
+              },
+              {
+                "name": "publicatieType",
+                "value": "AAO"
+              },
+              {
+                "name": "sort",
+                "value": "publicatieDatum,desc"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "c6e233bb-90ae-4356-aac5-858a9fdf5993",
+        "name": "Tenderned Publicaties",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          -416,
+          1072
+        ],
+        "typeVersion": 4.2,
+        "credentials": {
+          "httpBasicAuth": {
+            "id": "RZo5oOhf9FBGqCAJ",
+            "name": "TenderNed CBA Benelux"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const response = $input.item.json;\nlet publicaties = [];\nif (response.content && Array.isArray(response.content)) {\n  publicaties = response.content;\n} else if (Array.isArray(response)) {\n  publicaties = response;\n}\nif (publicaties.length === 0) {\n  return { json: { aantalPublicaties: 0, publicaties: [], bericht: 'Geen nieuwe tenders gevonden' } };\n}\n// Deduplicate by publicatieId\nconst seen = new Set();\npublicaties = publicaties.filter(p => {\n  if (!p.publicatieId || seen.has(p.publicatieId)) return false;\n  seen.add(p.publicatieId);\n  return true;\n});\nreturn { json: { aantalPublicaties: publicaties.length, publicaties: publicaties } };"
+        },
+        "id": "71723fe1-4925-46e9-9dd5-e630457b1bcc",
+        "name": "Verwerk Response",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          -80,
+          1072
+        ],
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "fieldToSplitOut": "publicaties",
+          "include": "allOtherFields",
+          "options": {}
+        },
+        "id": "1a904325-124f-494d-b52c-c9e7fe8b053b",
+        "name": "Split Out",
+        "type": "n8n-nodes-base.splitOut",
+        "position": [
+          224,
+          1072
+        ],
+        "typeVersion": 1
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "id": "0f2b6d09-036c-446f-8d28-f3d631aa095a",
+        "name": "Loop Over Items",
+        "type": "n8n-nodes-base.splitInBatches",
+        "position": [
+          624,
+          720
+        ],
+        "typeVersion": 3
+      },
+      {
+        "parameters": {
+          "url": "=https://www.tenderned.nl/papi/tenderned-rs-tns/v2/publicaties/{{ $json.publicaties.publicatieId }}",
+          "authentication": "genericCredentialType",
+          "genericAuthType": "httpBasicAuth",
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "18decb58-8e77-433b-b0a3-5a639f05c5f3",
+        "name": "Haal JSON Details",
+        "type": "n8n-nodes-base.httpRequest",
+        "position": [
+          880,
+          1072
+        ],
+        "typeVersion": 4.2,
+        "credentials": {
+          "httpBasicAuth": {
+            "id": "RZo5oOhf9FBGqCAJ",
+            "name": "TenderNed CBA Benelux"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsCode": "const item = $input.item.json;\nconst cpvCodes = [];\nif (item.cpvCodes && Array.isArray(item.cpvCodes)) {\n  item.cpvCodes.forEach(c => { if (c.code) cpvCodes.push(c.code.split('-')[0]); });\n}\nconst trefwoorden = [item.trefwoord1, item.trefwoord2, item.trefwoord3].filter(Boolean).map(t => t.replace(/\"/g, '')).join(', ');\nconst url = `https://www.tenderned.nl/aankondigingen/overzicht/${item.publicatieId}`;\nreturn { json: { json_publicatieId: item.publicatieId, json_aanbestedingNaam: item.aanbestedingNaam || '', json_opdrachtgeverNaam: item.opdrachtgeverNaam || '', json_opdrachtBeschrijving: item.opdrachtBeschrijving || '', json_publicatieDatum: item.publicatieDatum || '', json_sluitingsDatum: item.sluitingsDatum || '', json_deadline_aanvragen: item.termijnVoorOntvangstVanAanvragen || item.termijnIndienenVragen || '', json_procedure: item.procedureCode?.omschrijving || '', json_typeOpdracht: item.typeOpdrachtCode?.omschrijving || '', json_trefwoorden: trefwoorden || '-', cpv_codes: cpvCodes, cpv_main: cpvCodes[0] || null, cpv_all_text: cpvCodes.join(', '), originalLink: url, originele_data_json: JSON.stringify(item) } };"
+        },
+        "id": "d4e5f6a7-b8c9-0123-def0-123456789012",
+        "name": "Verwerk Tender",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1120,
+          1072
+        ],
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "jsCode": "const j = $input.item.json;\nfunction parseDate(d) { if (!d) return null; try { return d.split('T')[0]; } catch(e) { return null; } }\nreturn { json: { external_id: String(j.json_publicatieId || ''), naam: j.json_aanbestedingNaam || '', opdrachtgever: j.json_opdrachtgeverNaam || '', publicatie_datum: parseDate(j.json_publicatieDatum), sluiting_datum: parseDate(j.json_sluitingsDatum), cpv_codes: j.cpv_all_text || '', cpv_main: j.cpv_main || null, beschrijving: j.json_opdrachtBeschrijving || '', note: '', waarde: '', deadline_vragen: parseDate(j.json_deadline_aanvragen) || '', platform: 'TenderNed', url: j.originalLink || '', trefwoorden: j.json_trefwoorden || '', procedure: j.json_procedure || '', type_opdracht: j.json_typeOpdracht || '', raw_json: j.originele_data_json || '{}' } };"
+        },
+        "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+        "name": "Prepare DB Record",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          1600,
+          1072
+        ],
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "operation": "insert",
+          "schema": {
+            "__rl": true,
+            "mode": "list",
+            "value": "public"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "list",
+            "value": "tenders_scraped"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "value": {},
+            "schema": [
+              {
+                "id": "external_id",
+                "displayName": "external_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true,
+                "removed": false
+              },
+              {
+                "id": "naam",
+                "displayName": "naam",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "opdrachtgever",
+                "displayName": "opdrachtgever",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "publicatie_datum",
+                "displayName": "publicatie_datum",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "dateTime",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "sluiting_datum",
+                "displayName": "sluiting_datum",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "dateTime",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "cpv_codes",
+                "displayName": "cpv_codes",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "cpv_main",
+                "displayName": "cpv_main",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "beschrijving",
+                "displayName": "beschrijving",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "note",
+                "displayName": "note",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "waarde",
+                "displayName": "waarde",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "deadline_vragen",
+                "displayName": "deadline_vragen",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "platform",
+                "displayName": "platform",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "url",
+                "displayName": "url",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "trefwoorden",
+                "displayName": "trefwoorden",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "procedure",
+                "displayName": "procedure",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "type_opdracht",
+                "displayName": "type_opdracht",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "raw_json",
+                "displayName": "raw_json",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "status",
+                "displayName": "status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "scraped_at",
+                "displayName": "scraped_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "dateTime",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "analyzed_at",
+                "displayName": "analyzed_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "dateTime",
+                "canBeUsedToMatch": false,
+                "removed": false
+              }
+            ],
+            "attemptToConvertTypes": true,
+            "convertFieldsToString": false
+          },
+          "options": {
+            "skipOnConflict": true
+          }
+        },
+        "id": "b2c3d4e5-f6a7-8901-bcde-f01234567891",
+        "name": "Save to Postgres",
+        "type": "n8n-nodes-base.postgres",
+        "position": [
+          1840,
+          1072
+        ],
+        "typeVersion": 2.5,
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT DISTINCT ON (external_id)\n  id, external_id, naam, opdrachtgever, beschrijving,\n  trefwoorden, cpv_codes, cpv_main, sluiting_datum::text AS sluiting_datum,\n  url, procedure, type_opdracht, raw_json, scraped_at\nFROM tenders_scraped\nWHERE status = 'scraped' AND analyzed_at IS NULL\nORDER BY external_id, scraped_at DESC NULLS LAST\nLIMIT 200",
+          "options": {}
+        },
+        "id": "aa000001-aa00-aa00-aa00-aa0000000001",
+        "name": "Read Scraped Tenders",
+        "type": "n8n-nodes-base.postgres",
+        "position": [
+          2080,
+          704
+        ],
+        "typeVersion": 2.5,
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "executeOnce": true
+      },
+      {
+        "parameters": {
+          "options": {}
+        },
+        "id": "aa000002-aa00-aa00-aa00-aa0000000002",
+        "name": "Loop Intelligence",
+        "type": "n8n-nodes-base.splitInBatches",
+        "position": [
+          2400,
+          704
+        ],
+        "typeVersion": 3
+      },
+      {
+        "parameters": {
+          "jsCode": "const j = $input.item.json;\nreturn { json: {\n  id: j.id,\n  external_id: j.external_id,\n  title: j.naam,\n  buyer: j.opdrachtgever,\n  summary_raw: j.beschrijving,\n  trefwoorden: j.trefwoorden,\n  cpv_codes: j.cpv_codes,\n  sluiting_datum: j.sluiting_datum,\n  url: j.url,\n  procedure: j.procedure,\n  type_opdracht: j.type_opdracht,\n  score: j.score,\n  label: j.label,\n  score_breakdown: j.score_breakdown,\n  keyword_result: j.keyword_result,\n  keyword_matches: j.keyword_matches,\n  buyer_type_detected: j.buyer_type_detected,\n  red_flags: j.red_flags,\n  llm_relevance: j.llm_relevance,\n  llm_relevance_reason: j.llm_relevance_reason\n} };"
+        },
+        "id": "aa000003-aa00-aa00-aa00-aa0000000003",
+        "name": "Prepare AI Input",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          2720,
+          704
+        ],
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ $json.title + \"\\n\\nBuyer: \" + $json.buyer + \"\\n\\nDescription: \" + $json.summary_raw }}",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "You are a senior procurement analyst for CBA Benelux, the premium ManageEngine partner in the Netherlands. Analyze Dutch public tenders (written in Dutch or English). Respond in English.\n\nProvide:\n- executive_summary: 2-3 sentence overview of opportunity and commercial significance\n- what_is_being_bought: Specific capabilities/systems, be concrete (not 'IT services' but 'cloud ITSM for 500 users with asset management')\n- why_it_matters: Why this purchase now, what problem it solves, IT strategy signal\n- key_requirements: Concrete specs, user counts, compliance needs, deployment model\n- possible_knockout_risks: Incumbent lock-in, budget constraints, certifications, framework agreements, unrealistic timelines\n- commercial_relevance: Deal quality - buyer credibility, budget visibility, reference potential\n- recommended_action: 'Pursue immediately' / 'Qualify further' / 'Monitor only' / 'No-bid' + next steps\n- confidence_level: High/Medium/Low\n\nFocus on what a Dutch B2B sales team needs for go/no-go. Be direct and specific."
+          }
+        },
+        "id": "4d4adc5d-94ac-4e4a-93cb-e1318e2a9053",
+        "name": "AI Tender Analysis",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          3040,
+          704
+        ],
+        "continueOnFail": false,
+        "onError": "continueRegularOutput",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "id",
+            "value": "gpt-4o-mini"
+          },
+          "responsesApiEnabled": false,
+          "options": {
+            "temperature": 0.2
+          }
+        },
+        "id": "8dd209eb-05c8-469e-99b9-3cde7ed58f21",
+        "name": "GPT-4o Analysis Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          2960,
+          912
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "VIdXp3d5mDrTErFp",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "{\"executive_summary\":\"2-3 sentence overview\",\"what_is_being_bought\":\"Specific system or service\",\"why_it_matters\":\"Commercial context\",\"key_requirements\":[\"Requirement 1\"],\"possible_knockout_risks\":[\"Risk 1\"],\"commercial_relevance\":\"Deal quality assessment\",\"recommended_action\":\"Pursue immediately\",\"confidence_level\":\"High\"}"
+        },
+        "id": "ac021177-6463-4a8d-93b0-04bf657586d4",
+        "name": "Analysis Output Parser",
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          3200,
+          912
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const prepInput = $('Prepare AI Input').item.json;\nconst analysisOutput = $input.item.json.output;\nreturn { json: {\n  id: prepInput.id,\n  external_id: prepInput.external_id,\n  naam: prepInput.title,\n  buyer: prepInput.buyer,\n  summary_raw: prepInput.summary_raw,\n  analysis_output: analysisOutput,\n  score: prepInput.score,\n  label: prepInput.label,\n  score_breakdown: prepInput.score_breakdown,\n  keyword_result: prepInput.keyword_result,\n  keyword_matches: prepInput.keyword_matches,\n  buyer_type_detected: prepInput.buyer_type_detected,\n  red_flags: prepInput.red_flags,\n  llm_relevance: prepInput.llm_relevance,\n  llm_relevance_reason: prepInput.llm_relevance_reason\n} };"
+        },
+        "id": "aa000004-aa00-aa00-aa00-aa0000000004",
+        "name": "Carry Context",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          3360,
+          704
+        ],
+        "typeVersion": 2,
+        "continueOnFail": false,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "promptType": "define",
+          "text": "={{ \"Tender: \" + $json.naam + \"\\nBuyer: \" + $json.buyer + \"\\nDescription: \" + $json.summary_raw + \"\\nAnalysis: \" + ($json.analysis_output?.executive_summary ?? \"\") }}",
+          "hasOutputParser": true,
+          "options": {
+            "systemMessage": "You are a ManageEngine product specialist for CBA Benelux (Netherlands). Map tender requirements to ManageEngine products.\n\nPORTFOLIO:\n- ServiceDesk Plus: ITSM, helpdesk, ITIL incident/problem/change, asset management, CMDB, self-service portal\n- Site24x7: Full-stack monitoring - server, cloud, network, application performance, website, synthetic\n- Applications Manager: Deep APM for Java/.NET/PHP, database monitoring, middleware, business transactions\n- OpManager: Network monitoring, infrastructure, bandwidth, device, fault management, network topology\n- Endpoint Central: Endpoint management - patch, software deployment, MDM, OS deployment, remote control\n- PAM360: Privileged access management - password vault, session recording, just-in-time access\n- Log360: SIEM - log management, security analytics, compliance, threat detection, Azure AD, Office 365\n- ADAudit Plus: Active Directory auditing, Azure AD, user behavior analytics, GDPR/BIO/NEN 7510 compliance\n\nDUTCH CONTEXT: BIO compliance (Baseline Informatiebeveiliging Overheid) is required for many NL government tenders. NEN 7510 for healthcare. GEMMA/KING standards for municipalities.\n\nProvide:\n- recommended_products: Only genuine matches, be selective\n- fit_reasoning: Map specific tender requirements to specific product capabilities\n- fit_level: High/Medium/Low\n- open_questions: Critical missing info (deployment model, incumbent, compliance framework)\n- likely_competitive_context: Who else bids? ServiceNow, TOPdesk, Datadog, Dynatrace, CyberArk, Splunk, Microsoft\n\nHonesty over optimism. A Low rating with clear reasoning beats inflated High."
+          }
+        },
+        "id": "4da4bd24-8f3c-4df8-9401-8257b9cbfa80",
+        "name": "ManageEngine Fit Engine",
+        "type": "@n8n/n8n-nodes-langchain.agent",
+        "typeVersion": 3.1,
+        "position": [
+          3680,
+          704
+        ],
+        "continueOnFail": false,
+        "onError": "continueRegularOutput",
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 3000
+      },
+      {
+        "parameters": {
+          "model": {
+            "__rl": true,
+            "mode": "id",
+            "value": "gpt-4o-mini"
+          },
+          "responsesApiEnabled": false,
+          "options": {
+            "temperature": 0.2
+          }
+        },
+        "id": "552f588d-716e-4bae-a755-75e9b4b98be4",
+        "name": "GPT-4o Fit Model",
+        "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+        "typeVersion": 1.3,
+        "position": [
+          3600,
+          912
+        ],
+        "credentials": {
+          "openAiApi": {
+            "id": "VIdXp3d5mDrTErFp",
+            "name": "OpenAi account"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "jsonSchemaExample": "{\"recommended_products\":[\"ServiceDesk Plus\"],\"fit_reasoning\":\"Maps to SDP because...\",\"fit_level\":\"High\",\"open_questions\":[\"On-premise or cloud?\"],\"likely_competitive_context\":\"ServiceNow and TOPdesk will bid\"}"
+        },
+        "id": "e3cae855-be66-4c13-a4c0-cda77189f755",
+        "name": "Fit Output Parser",
+        "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+        "typeVersion": 1.3,
+        "position": [
+          3840,
+          912
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "try {\n  const carryCtxItem = $('Carry Context').first();\n  const fitInput = $input.first();\n\n  if (!carryCtxItem || !fitInput || carryCtxItem.json.error || fitInput.json.error) {\n    const prepRaw = $('Prepare AI Input').first();\n    const pi = prepRaw ? prepRaw.json : {};\n    return { json: {\n      external_id: pi.external_id || '',\n      executive_summary: 'AI analysis failed - skipped',\n      recommended_action: 'Monitor only',\n      confidence_level: 'Low',\n      recommended_products: JSON.stringify([]),\n      fit_level: 'Low',\n      fit_reasoning: '',\n      open_questions: JSON.stringify([]),\n      likely_competitive_context: '',\n      key_requirements: JSON.stringify([]),\n      possible_knockout_risks: JSON.stringify([]),\n      commercial_relevance: '',\n      what_is_being_bought: '',\n      why_it_matters: '',\n      priority_score: 0,\n      status: 'analyzed',\n      analyzed_at: new Date().toISOString(),\n      score: pi.score || 0,\n      label: pi.label || 'Monitor',\n      score_breakdown: pi.score_breakdown || {},\n      keyword_result: pi.keyword_result || '',\n      keyword_matches: pi.keyword_matches || [],\n      buyer_type_detected: pi.buyer_type_detected || '',\n      red_flags: pi.red_flags || [],\n      llm_relevance: pi.llm_relevance || '',\n      llm_relevance_reason: (pi.llm_relevance_reason || '').substring(0, 300)\n    }};\n  }\n\n  const carryCtx = carryCtxItem.json;\n  const fitOutput = fitInput.json.output || {};\n  const analysisOutput = carryCtx.analysis_output || {};\n\n  const fitScore = { High: 3, Medium: 2, Low: 1 }[fitOutput.fit_level] || 1;\n  const actionScore = { 'Pursue immediately': 4, 'Qualify further': 3, 'Monitor only': 2, 'No-bid': 1 }[analysisOutput.recommended_action] || 1;\n  const priorityScore = fitScore * actionScore;\n\n  // Real d1 from the AI fit verdict replaces the provisional constant; recompute score + label.\n  // Hot requires BOTH strong product fit and good conditions - this is what gates Prompt C.\n  const bd = Object.assign({}, carryCtx.score_breakdown || {});\n  const d1Map = { High: 15, Medium: 8, Low: 2 };\n  const d1New = d1Map[fitOutput.fit_level] !== undefined ? d1Map[fitOutput.fit_level] : 8;\n  const oldD1 = typeof bd.d1 === 'number' ? bd.d1 : 15;\n  bd.d1 = d1New;\n  const finalScore = (carryCtx.score || 0) - oldD1 + d1New;\n  const flags = carryCtx.red_flags || [];\n  let finalLabel;\n  if (flags.includes('deadline_passed')) {\n    finalLabel = 'Disqualified';\n  } else {\n    finalLabel = finalScore >= 40 ? 'Warm' : finalScore >= 20 ? 'Cold' : 'Monitor';\n    if (fitOutput.fit_level === 'High' && finalScore >= 50) finalLabel = 'Hot';\n    if (flags.length > 0) {\n      const ladder = ['Monitor', 'Cold', 'Warm', 'Hot'];\n      finalLabel = ladder[Math.max(0, ladder.indexOf(finalLabel) - 1)];\n    }\n  }\n\n  return { json: {\n    external_id: carryCtx.external_id,\n    executive_summary: analysisOutput.executive_summary || '',\n    what_is_being_bought: analysisOutput.what_is_being_bought || '',\n    why_it_matters: analysisOutput.why_it_matters || '',\n    key_requirements: JSON.stringify(analysisOutput.key_requirements || []),\n    possible_knockout_risks: JSON.stringify(analysisOutput.possible_knockout_risks || []),\n    commercial_relevance: analysisOutput.commercial_relevance || '',\n    recommended_action: (analysisOutput.recommended_action || '').substring(0, 50),\n    confidence_level: (analysisOutput.confidence_level || '').substring(0, 20),\n    recommended_products: JSON.stringify(fitOutput.recommended_products || []),\n    fit_reasoning: fitOutput.fit_reasoning || '',\n    fit_level: (fitOutput.fit_level || '').substring(0, 20),\n    open_questions: JSON.stringify(fitOutput.open_questions || []),\n    likely_competitive_context: fitOutput.likely_competitive_context || '',\n    priority_score: priorityScore,\n    status: 'analyzed',\n    analyzed_at: new Date().toISOString(),\n    score: finalScore,\n    label: finalLabel,\n    score_breakdown: bd,\n    keyword_result: carryCtx.keyword_result || '',\n    keyword_matches: carryCtx.keyword_matches || [],\n    buyer_type_detected: carryCtx.buyer_type_detected || '',\n    red_flags: carryCtx.red_flags || [],\n    llm_relevance: carryCtx.llm_relevance || '',\n    llm_relevance_reason: (carryCtx.llm_relevance_reason || '').substring(0, 300)\n  }};\n} catch(e) {\n  const prepRaw = $('Prepare AI Input').first();\n  const pi = prepRaw ? prepRaw.json : {};\n  return { json: {\n    external_id: pi.external_id || '',\n    executive_summary: 'Analysis error: ' + e.message,\n    recommended_action: 'Monitor only',\n    confidence_level: 'Low',\n    recommended_products: JSON.stringify([]),\n    fit_level: 'Low',\n    fit_reasoning: '',\n    open_questions: JSON.stringify([]),\n    likely_competitive_context: '',\n    key_requirements: JSON.stringify([]),\n    possible_knockout_risks: JSON.stringify([]),\n    commercial_relevance: '',\n    what_is_being_bought: '',\n    why_it_matters: '',\n    priority_score: 0,\n    status: 'analyzed',\n    analyzed_at: new Date().toISOString(),\n    score: pi.score || 0,\n    label: pi.label || 'Monitor',\n    score_breakdown: pi.score_breakdown || {},\n    keyword_result: pi.keyword_result || '',\n    keyword_matches: pi.keyword_matches || [],\n    buyer_type_detected: pi.buyer_type_detected || '',\n    red_flags: pi.red_flags || [],\n    llm_relevance: pi.llm_relevance || '',\n    llm_relevance_reason: (pi.llm_relevance_reason || '').substring(0, 300)\n  }};\n}"
+        },
+        "id": "aa000005-aa00-aa00-aa00-aa0000000005",
+        "name": "Merge Analysis",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          4000,
+          704
+        ],
+        "typeVersion": 2,
+        "continueOnFail": false,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "operation": "upsert",
+          "schema": {
+            "__rl": true,
+            "mode": "list",
+            "value": "public"
+          },
+          "table": {
+            "__rl": true,
+            "mode": "list",
+            "value": "tenders_scraped"
+          },
+          "columns": {
+            "mappingMode": "autoMapInputData",
+            "value": {},
+            "matchingColumns": [
+              "external_id"
+            ],
+            "schema": [
+              {
+                "id": "external_id",
+                "displayName": "external_id",
+                "required": true,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": true,
+                "removed": false
+              },
+              {
+                "id": "executive_summary",
+                "displayName": "executive_summary",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "what_is_being_bought",
+                "displayName": "what_is_being_bought",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "why_it_matters",
+                "displayName": "why_it_matters",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "key_requirements",
+                "displayName": "key_requirements",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "possible_knockout_risks",
+                "displayName": "possible_knockout_risks",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "commercial_relevance",
+                "displayName": "commercial_relevance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "recommended_action",
+                "displayName": "recommended_action",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "confidence_level",
+                "displayName": "confidence_level",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "recommended_products",
+                "displayName": "recommended_products",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "fit_reasoning",
+                "displayName": "fit_reasoning",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "fit_level",
+                "displayName": "fit_level",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "open_questions",
+                "displayName": "open_questions",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "likely_competitive_context",
+                "displayName": "likely_competitive_context",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "priority_score",
+                "displayName": "priority_score",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "status",
+                "displayName": "status",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "analyzed_at",
+                "displayName": "analyzed_at",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "dateTime",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "score",
+                "displayName": "score",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "number",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "label",
+                "displayName": "label",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "score_breakdown",
+                "displayName": "score_breakdown",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "keyword_result",
+                "displayName": "keyword_result",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "keyword_matches",
+                "displayName": "keyword_matches",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "buyer_type_detected",
+                "displayName": "buyer_type_detected",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "red_flags",
+                "displayName": "red_flags",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "llm_relevance",
+                "displayName": "llm_relevance",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              },
+              {
+                "id": "llm_relevance_reason",
+                "displayName": "llm_relevance_reason",
+                "required": false,
+                "defaultMatch": false,
+                "display": true,
+                "type": "string",
+                "canBeUsedToMatch": false,
+                "removed": false
+              }
+            ],
+            "attemptToConvertTypes": true,
+            "convertFieldsToString": false
+          },
+          "options": {}
+        },
+        "id": "aa000006-aa00-aa00-aa00-aa0000000006",
+        "name": "Update Postgres",
+        "type": "n8n-nodes-base.postgres",
+        "position": [
+          5180,
+          640
+        ],
+        "typeVersion": 2.5,
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT * FROM (\n  SELECT DISTINCT ON (external_id) naam, opdrachtgever, sluiting_datum::text AS sluiting_datum,\n    recommended_action, fit_level, priority_score, executive_summary, recommended_products, url, external_id,\n    score, label, buyer_type_detected, red_flags,\n    route_to_market, reseller_name, route_first_action\n  FROM tenders_scraped\n  WHERE status = 'analyzed'\n    AND analyzed_at >= NOW() - INTERVAL '24 hours'\n    AND label IN ('Hot', 'Warm')\n  ORDER BY external_id, score DESC NULLS LAST\n) deduped\nORDER BY CASE WHEN label = 'Hot' THEN 0 ELSE 1 END ASC, score DESC NULLS LAST",
+          "options": {}
+        },
+        "id": "aa000007-aa00-aa00-aa00-aa0000000007",
+        "name": "Read Analyzed Today",
+        "type": "n8n-nodes-base.postgres",
+        "position": [
+          4480,
+          704
+        ],
+        "typeVersion": 2.5,
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "executeOnce": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const items = $input.all();\nif (items.length === 0) return [];\nconst rows = items.map(i => i.json);\nconst hot = rows.filter(r => r.label === 'Hot');\nconst warm = rows.filter(r => r.label === 'Warm');\n\nfunction formatTender(t) {\n  const color = t.label === 'Hot' ? '#dc2626' : '#d97706';\n  let products = '';\n  try { products = JSON.parse(t.recommended_products || '[]').join(', '); } catch(e) { products = String(t.recommended_products || ''); }\n  const flags = Array.isArray(t.red_flags) ? t.red_flags : [];\n  const flagLine = flags.length ? '<br/><span style=\"color:#dc2626\">Risico: ' + flags.join(', ') + '</span>' : '';\n  const routeLine = (t.route_to_market && t.label === 'Hot')\n    ? '<br/><strong style=\"color:#1d4ed8\">Route: ' + t.route_to_market + (t.reseller_name ? ' (' + t.reseller_name + ')' : '') + '</strong>' +\n      (t.route_first_action ? '<br/><em>Eerste stap: ' + t.route_first_action + '</em>' : '')\n    : '';\n  const outreachBlock = (t.reseller_outreach_draft && t.label === 'Hot')\n    ? '<div style=\"margin-top:8px;background:#f0f4ff;border-left:3px solid #1d4ed8;padding:8px;font-size:13px;\"><strong>Borrador reseller:</strong><br/>' + t.reseller_outreach_draft + '</div>'\n    : '';\n  return '<div style=\"margin-bottom:24px;border-left:4px solid ' + color + ';padding-left:12px;\">' +\n    '<strong>' + (t.naam || '') + '</strong> &mdash; ' + (t.opdrachtgever || '') + '<br/>' +\n    '<em>Sluiting: ' + (t.sluiting_datum || 'onbekend') + ' | Score: ' + (t.score || 0) + ' | Label: ' + (t.label || '') + '</em><br/>' +\n    '<em>Producten: ' + (products || 'n.v.t.') + ' | Fit: ' + (t.fit_level || 'n.v.t.') + '</em>' + flagLine + routeLine + outreachBlock + '<br/>' +\n    (t.executive_summary || '') + '<br/>' +\n    (t.recommended_action ? '<strong>Actie: ' + t.recommended_action + '</strong><br/>' : '') +\n    '<a href=\"' + (t.url || '') + '\">TenderNed</a></div>';\n}\n\nconst dateStr = new Date().toLocaleDateString('nl-NL');\nconst html = '<h2>CBA Tender Intelligence &mdash; ' + dateStr + '</h2>' +\n  '<p><strong>' + rows.length + ' relevante tenders</strong> | Hot: ' + hot.length + ' | Warm: ' + warm.length + '</p>' +\n  (hot.length ? '<h3 style=\"color:#dc2626\">Hot (' + hot.length + ')</h3>' + hot.map(formatTender).join('') : '') +\n  (warm.length ? '<h3 style=\"color:#d97706\">Warm (' + warm.length + ')</h3>' + warm.map(formatTender).join('') : '');\n\nconst subject = 'Tender Intel ' + dateStr + ' - ' + hot.length + ' Hot, ' + warm.length + ' Warm';\nreturn [{ json: { subject, body: html } }];"
+        },
+        "id": "aa000008-aa00-aa00-aa00-aa0000000008",
+        "name": "Format Daily Brief",
+        "type": "n8n-nodes-base.code",
+        "position": [
+          4720,
+          704
+        ],
+        "typeVersion": 2
+      },
+      {
+        "parameters": {
+          "sendTo": "derson@cbabenelux.com",
+          "subject": "={{ $json.subject }}",
+          "message": "={{ $json.body }}",
+          "options": {
+            "emailType": "html"
+          }
+        },
+        "id": "aa000009-aa00-aa00-aa00-aa0000000009",
+        "name": "Send Email Gmail",
+        "type": "n8n-nodes-base.gmail",
+        "typeVersion": 2.1,
+        "position": [
+          4960,
+          704
+        ],
+        "credentials": {
+          "gmailOAuth2": {
+            "id": "mEHXfGEi90CAlu6p",
+            "name": "Gmail account"
+          }
+        },
+        "webhookId": "0032b19f-5914-4aa5-9a73-5b900ad01182"
+      },
+      {
+        "parameters": {
+          "authentication": "oAuth2",
+          "select": "user",
+          "user": {
+            "__rl": true,
+            "value": "U09JMELT5QB",
+            "mode": "list",
+            "cachedResultName": "derson"
+          },
+          "text": "={{ $json.subject + ' - brief sent to derson@cbabenelux.com' }}",
+          "otherOptions": {}
+        },
+        "id": "aa000010-aa00-aa00-aa00-aa0000000010",
+        "name": "Slack Alert",
+        "type": "n8n-nodes-base.slack",
+        "typeVersion": 2.3,
+        "position": [
+          4960,
+          880
+        ],
+        "credentials": {
+          "slackOAuth2Api": {
+            "id": "cbs8xtL1yp3dKJDL",
+            "name": "Slack OAuth2 API"
+          }
+        },
+        "continueOnFail": false,
+        "onError": "continueRegularOutput",
+        "webhookId": "18172cf4-92aa-4a83-b8ce-b2c4712b62d7"
+      },
+      {
+        "id": "kf000001-0000-0000-0000-000000000001",
+        "name": "Keyword Filter",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2560,
+          1100
+        ],
+        "parameters": {
+          "jsCode": "const j = $input.item.json;\nconst text = [j.naam, j.beschrijving, j.trefwoorden].filter(Boolean).join(' ').toLowerCase();\n\nconst negKw = [\n  'schoonmaak','schoonmaakdiensten','catering','fysieke beveiliging','bewaking',\n  'bouw','verbouw','renovatie','sloopwerkzaamheden','groenvoorziening','groenonderhoud',\n  'vervoer','transport','personeelsvervoer','inhuur personeel','uitzendkrachten',\n  'thuiszorg','hulp bij huishouden','afvalverwerking','rioolbeheer','wegenbouw',\n  'civieltechnisch','drukwerk','kantoorartikelen',\n  'physical security','construction work','landscaping','staffing agency','waste management','road construction'\n];\n\nif (negKw.some(kw => text.includes(kw))) {\n  return { json: { ...j, keyword_result: 'DISQUALIFY', keyword_matches: [], kw_negative_hit: true } };\n}\n\nconst posKw = [\n  'servicedesk','service desk','helpdesk','help desk','itsm','itil',\n  'service management','servicemanagement','it service management','meldingenbeheer',\n  'incidentbeheer','incident management','probleembeheer','wijzigingsbeheer',\n  'change management','cmdb','configuration management database','kennisbank',\n  'asset management','it asset management','contractbeheer','slm',\n  'monitoring','monitoringtool','monitoring tool','netwerkmonitoring',\n  'infrastructuurmonitoring','applicatiemonitoring','observability','alerting',\n  'uptime','noc','apm','log management','event management','systeembeheer',\n  'wachtwoordkluis','wachtwoordbeheer','wachtwoordmanager','password management','password manager',\n  'privileged access management','pam','enterprise password vault','password vault',\n  'bevoorrechte toegang','sessiebeheer','identity management','gebruikersbeheer',\n  'active directory beheer','active directory audit','ad audit','toegangsbeheer','iam','siem',\n  'patch management','patchbeheer','mdm','mobile device management','endpoint management','endpoint central',\n  'netwerkbeheer','netwerk management','network management','netwerk monitoring',\n  'it-beheer','it beheer','it operaties','it operations','itom',\n  'kwetsbaarheidsbeheer','vulnerability management','remote monitoring','remote beheer',\n  'apparaatbeheer','device management','zero trust','privileged account'\n];\n\nconst matches = posKw.filter(kw => text.includes(kw));\nconst result = matches.length >= 2 ? 'PASS' : matches.length === 1 ? 'AMBIGUOUS' : 'DISQUALIFY';\n\nreturn { json: { ...j, keyword_result: result, keyword_matches: matches, kw_negative_hit: false } };"
+        }
+      },
+      {
+        "id": "mn000001-0000-0000-0000-000000000001",
+        "name": "Mark No Match",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          2900,
+          1280
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "UPDATE tenders_scraped SET\n  status = 'analyzed',\n  fit_level = 'Low',\n  recommended_action = 'No-bid',\n  executive_summary = 'Auto-filtered: no relevant keywords or classified not relevant.',\n  priority_score = 0,\n  analyzed_at = NOW(),\n  label = 'Disqualified',\n  keyword_result = '{{ $json.keyword_result }}'\nWHERE id = {{ $json.id }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "id": "aa100001-0000-0000-0000-000000000000",
+        "name": "Route on Keyword Result",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          2720,
+          1100
+        ],
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "kw-pass-001",
+                      "leftValue": "={{ $json.keyword_result }}",
+                      "rightValue": "PASS",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "PASS"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "kw-ambi-001",
+                      "leftValue": "={{ $json.keyword_result }}",
+                      "rightValue": "AMBIGUOUS",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "AMBIGUOUS"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "caseSensitive": true,
+                    "typeValidation": "strict",
+                    "version": 2
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "kw-disq-001",
+                      "leftValue": "={{ $json.keyword_result }}",
+                      "rightValue": "DISQUALIFY",
+                      "operator": {
+                        "type": "string",
+                        "operation": "equals",
+                        "name": "filter.operator.equals"
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "DISQUALIFY"
+              }
+            ]
+          },
+          "options": {
+            "fallbackOutput": "extra"
+          }
+        }
+      },
+      {
+        "id": "aa100002-0000-0000-0000-000000000000",
+        "name": "Score Tender",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2880,
+          1000
+        ],
+        "parameters": {
+          "jsCode": "const item = $input.item.json;\nfunction norm(s) { return (s||'').toLowerCase(); }\nconst now = new Date();\nconst bd = {};\nbd.d1 = 15;\nlet d2 = 2;\ntry {\n  const raw = typeof item.raw_json === 'string' ? JSON.parse(item.raw_json) : (item.raw_json || {});\n  const v = parseFloat(raw.raamovereenkomstWaarde || raw.opdrachtwaarde || raw.totaleWaarde || 0);\n  if (v >= 500000) d2 = 20;\n  else if (v >= 200000) d2 = 15;\n  else if (v >= 100000) d2 = 10;\n  else if (v >= 50000) d2 = 5;\n} catch(e) {}\nbd.d2 = d2;\nconst proc = norm(item.procedure);\nbd.d3 = proc.includes('openbaar') ? 15 : proc.includes('versneld') ? 13 : proc.includes('niet-openbaar') ? 12 : proc.includes('onderhandeling') ? 10 : proc.includes('mini-competitie') ? 6 : 8;\nconst buyer = norm(item.opdrachtgever);\nconst authMap = [[['rijkswaterstaat','ministerie','belastingdienst','cibg','rvo'],'rijksoverheid',15],[['politie'],'politie',14],[['defensie'],'defensie',14],[['provincie'],'provincie',13],[['gemeente amsterdam','gemeente rotterdam','gemeente den haag','gemeente utrecht'],'grote gemeente',13],[['hogeschool','universiteit','mbo'],'onderwijs',12],[['ziekenhuis','umc'],'zorg',11],[['waterschap'],'waterschap',9],[['gemeente'],'gemeente',7]];\nlet d4 = 5, buyerType = 'overig';\nfor (const [keys, type, pts] of authMap) { if (keys.some(k => buyer.includes(k))) { d4 = pts; buyerType = type; break; } }\nbd.d4 = d4;\nconst dlWeeks = item.sluiting_datum ? (new Date(item.sluiting_datum) - now) / 6048e5 : null;\nbd.d5 = dlWeeks === null ? 5 : dlWeeks >= 6 ? 10 : dlWeeks >= 3 ? 7 : dlWeeks >= 2 ? 4 : dlWeeks >= 0 ? 1 : 0;\nconst hrs = item.scraped_at ? (now - new Date(item.scraped_at)) / 36e5 : null;\nbd.d6 = !hrs || hrs <= 48 ? 5 : hrs <= 120 ? 3 : 1;\nbd.d7 = 0;\nconst rawScore = bd.d1+bd.d2+bd.d3+bd.d4+bd.d5+bd.d6+bd.d7;\nconst flags = [];\nconst tn = norm(item.naam);\nif (dlWeeks !== null && dlWeeks < 1.5) flags.push('deadline_too_short');\nif (dlWeeks !== null && dlWeeks < 0) flags.push('deadline_passed');\nif ((tn.includes('verlenging')||tn.includes(' optie '))&&!tn.includes('nieuw')) flags.push('renewal_likely');\nconst rawLabel = rawScore >= 70 ? 'Hot' : rawScore >= 45 ? 'Warm' : rawScore >= 20 ? 'Cold' : 'Monitor';\nconst ladder = ['Monitor','Cold','Warm','Hot'];\nlet label = flags.length > 0 ? (ladder[Math.max(0,ladder.indexOf(rawLabel)-1)]) : rawLabel;\nif (flags.includes('deadline_passed')) label = 'Disqualified';\nreturn { json: { ...item, score: rawScore, label, score_breakdown: bd, red_flags: flags, buyer_type_detected: buyerType } };"
+        }
+      },
+      {
+        "id": "aa100003-0000-0000-0000-000000000000",
+        "name": "Route on Label",
+        "type": "n8n-nodes-base.switch",
+        "typeVersion": 3.2,
+        "position": [
+          3040,
+          1000
+        ],
+        "parameters": {
+          "mode": "rules",
+          "rules": {
+            "values": [
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "needs-ai-001",
+                      "leftValue": "={{ ['Hot','Warm'].includes($json.label) }}",
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "true",
+                        "singleValue": true
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "Needs AI"
+              },
+              {
+                "conditions": {
+                  "options": {
+                    "version": 2
+                  },
+                  "combinator": "and",
+                  "conditions": [
+                    {
+                      "id": "no-ai-001",
+                      "leftValue": "={{ ['Cold','Monitor','Disqualified'].includes($json.label) }}",
+                      "operator": {
+                        "type": "boolean",
+                        "operation": "true",
+                        "singleValue": true
+                      }
+                    }
+                  ]
+                },
+                "renameOutput": true,
+                "outputKey": "No AI"
+              }
+            ]
+          },
+          "options": {}
+        }
+      },
+      {
+        "id": "aa100004-0000-0000-0000-000000000000",
+        "name": "Build Cold Update",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3200,
+          1150
+        ],
+        "parameters": {
+          "jsCode": "const j = $input.item.json;\nfunction s(v) { if (v===null||v===undefined) return 'NULL'; return \"'\" + String(v).replace(/'/g,\"''\") + \"'\"; }\nfunction arrStr(a) { if (!a||a.length===0) return \"ARRAY[]::text[]\"; return \"ARRAY[\" + a.map(x=>s(x)).join(',') + \"]::text[]\"; }\nconst sql = [\"UPDATE tenders_scraped SET\",\"  status = 'analyzed',\",\"  analyzed_at = NOW(),\",\"  score = \"+(j.score||0)+\",\",\"  label = \"+s(j.label)+\",\",\"  score_breakdown = \"+s(JSON.stringify(j.score_breakdown||{}))+ \"::jsonb,\",\"  keyword_result = \"+s(j.keyword_result)+\",\",\"  keyword_matches = \"+arrStr(j.keyword_matches)+\",\",\"  buyer_type_detected = \"+s(j.buyer_type_detected)+\",\",\"  red_flags = \"+arrStr(j.red_flags),\"WHERE id = \"+j.id].join('\\n');\nreturn { json: { ...j, _cold_sql: sql } };"
+        }
+      },
+      {
+        "id": "aa100005-0000-0000-0000-000000000000",
+        "name": "Update PG Cold",
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          3360,
+          1150
+        ],
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "={{ $json._cold_sql }}",
+          "options": {}
+        },
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "continueOnFail": true
+      },
+      {
+        "id": "aa100006-0000-0000-0000-000000000000",
+        "name": "Build Prompt A",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2880,
+          1350
+        ],
+        "parameters": {
+          "jsCode": "const j = $input.item.json;\nconst sys = 'You are a Dutch public procurement classifier. Determine whether a tender is relevant to a Dutch IT software vendor selling ITSM, monitoring, PAM, and endpoint management tools.\\n\\nManageEngine products in scope:\\n- ServiceDesk Plus (ITSM, service desk, incident/problem/change management, CMDB)\\n- OpManager / Applications Manager (network monitoring, infrastructure monitoring, availability)\\n- PAM360 / Password Manager Pro (privileged access management, password vaulting)\\n- ADManager Plus (Active Directory management)\\n- Endpoint Central (endpoint management, MDM, patch management)\\n\\nA tender is RELEVANT if the contracting authority is purchasing software or services that directly map to one of these product categories.\\nA tender is NOT RELEVANT if it is about physical construction, staffing, catering, general consulting without IT tools, or domains clearly outside ITSM/ITOM/PAM/endpoint.\\n\\nRespond with JSON only: {\"relevant\": true, \"confidence\": \"high\", \"reason\": \"one sentence\"}';\nconst usr = 'Title: '+(j.naam||'')+'\\nBuyer: '+(j.opdrachtgever||'')+'\\nCPV: '+(j.cpv_codes||'')+'\\nDescription: '+(j.beschrijving||'').substring(0,500);\nreturn { json: { ...j, _oai_body: JSON.stringify({ model: 'gpt-4o-mini', max_tokens: 150, temperature: 0, messages: [{ role: 'system', content: sys },{ role: 'user', content: usr }] }) } };"
+        }
+      },
+      {
+        "id": "aa100007-0000-0000-0000-000000000000",
+        "name": "Call OpenAI Prompt A",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3040,
+          1350
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "openAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json._oai_body }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "VIdXp3d5mDrTErFp",
+            "name": "OpenAi account"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "aa100008-0000-0000-0000-000000000000",
+        "name": "Parse Prompt A",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3200,
+          1350
+        ],
+        "parameters": {
+          "jsCode": "const src = { ...$('Build Prompt A').item.json };\ndelete src._oai_body;\ntry {\n  const choices = $input.item.json.choices;\n  const content = choices && choices[0] && choices[0].message && choices[0].message.content;\n  const r = JSON.parse(content);\n  return { json: { ...src, llm_relevance: r.relevant ? 'RELEVANT' : 'NOT_RELEVANT', llm_relevance_reason: (r.reason||'').substring(0,300) } };\n} catch(e) {\n  return { json: { ...src, llm_relevance: 'RELEVANT', llm_relevance_reason: 'parse_error: '+e.message } };\n}"
+        }
+      },
+      {
+        "id": "aa100009-0000-0000-0000-000000000000",
+        "name": "Route on Relevance",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          3360,
+          1350
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "relevance-001",
+                "leftValue": "={{ $json.llm_relevance }}",
+                "rightValue": "RELEVANT",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "pc000001-0000-0000-0000-000000000001",
+        "name": "IF Hot?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          4220,
+          704
+        ],
+        "parameters": {
+          "conditions": {
+            "options": {
+              "version": 2,
+              "caseSensitive": true,
+              "typeValidation": "strict"
+            },
+            "combinator": "and",
+            "conditions": [
+              {
+                "id": "hot-check",
+                "leftValue": "={{ $json.label }}",
+                "rightValue": "Hot",
+                "operator": {
+                  "type": "string",
+                  "operation": "equals"
+                }
+              }
+            ]
+          }
+        }
+      },
+      {
+        "id": "pc000002-0000-0000-0000-000000000002",
+        "name": "Build Prompt C",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4460,
+          520
+        ],
+        "parameters": {
+          "jsCode": "const ma = $input.item.json;\nconst pi = $('Prepare AI Input').item.json;\nconst sys = 'You are a channel sales strategist for ManageEngine in the Netherlands.\\nCBA Benelux is a premium ManageEngine partner operating in the Benelux.\\n\\nFRAMEWORK AGREEMENT CONTEXT:\\n- EA2023: The dominant Dutch government software procurement framework. Authorized resellers include SoftwareOne, ProtinusIT, and Dustin. If a buyer procures via EA2023, CBA CANNOT bid directly.\\n- EASP2020-2: CBA is a participant and can bid more directly.\\n- Open procedure: CBA bids directly.\\n- Mini-competition: Go via SoftwareOne, ProtinusIT, or Dustin.\\n\\nRESELLER SELECTION GUIDE:\\n- SoftwareOne: Large enterprise and central government (ministeries, rijksoverheid, politie, defensie)\\n- ProtinusIT: Mid-market, municipalities (gemeenten), education (onderwijs), healthcare (zorg)\\n- Dustin: Mixed portfolio, smaller government and public sector\\n- If unclear: use Via EA2023 reseller (TBD)\\n\\nROUTES:\\n1. Direct CBA - open procedure or CBA is framework party\\n2. Via SoftwareOne - EA2023, large central government\\n3. Via ProtinusIT - EA2023, municipality/education/healthcare\\n4. Via Dustin - EA2023, smaller public sector\\n5. Via EA2023 reseller (TBD) - EA2023 confirmed, reseller unclear\\n6. ManageEngine direct - very large enterprise\\n7. Consortium/SI - requires a systems integrator\\n\\nRespond with JSON only. No explanations outside the JSON.';\nconst cpvStr = Array.isArray(pi.cpv_codes) ? pi.cpv_codes.join(', ') : (pi.cpv_codes || '');\nconst usr = 'Tender: ' + (pi.title || '') + '\\nBuyer: ' + (pi.buyer || '') + ' (' + (ma.buyer_type_detected || '') + ')\\nProcedure: ' + (pi.procedure || '') + '\\nScore: ' + ma.score + ' | Label: ' + ma.label + '\\nCPV: ' + cpvStr + '\\n\\nAI Analysis:\\n- Products identified: ' + (ma.recommended_products || '[]') + '\\n- Fit level: ' + (ma.fit_level || '') + '\\n- Competitive context: ' + (ma.likely_competitive_context || '') + '\\n- AI recommendation: ' + (ma.recommended_action || '') + '\\n\\nReturn JSON only. Use this exact structure:\\n{\"route\":\"Direct CBA|Via SoftwareOne|Via ProtinusIT|Via Dustin|Via EA2023 reseller (TBD)|ManageEngine direct|Consortium/SI\",\"reseller_name\":\"SoftwareOne or ProtinusIT or Dustin or null\",\"reasoning\":\"2-3 sentences.\",\"first_action\":\"Most important next step.\",\"reseller_outreach_draft\":\"3-sentence email body or null if Direct CBA\"}';\nreturn { json: { ...ma, _oai_body_c: JSON.stringify({ model: 'gpt-4o', max_tokens: 500, temperature: 0.2, messages: [{ role: 'system', content: sys }, { role: 'user', content: usr }] }) } };"
+        }
+      },
+      {
+        "id": "pc000003-0000-0000-0000-000000000003",
+        "name": "Call OpenAI Prompt C",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          4700,
+          520
+        ],
+        "parameters": {
+          "method": "POST",
+          "url": "https://api.openai.com/v1/chat/completions",
+          "authentication": "predefinedCredentialType",
+          "nodeCredentialType": "openAiApi",
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={{ $json._oai_body_c }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "credentials": {
+          "openAiApi": {
+            "id": "VIdXp3d5mDrTErFp",
+            "name": "OpenAi account"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 3,
+        "waitBetweenTries": 5000
+      },
+      {
+        "id": "pc000004-0000-0000-0000-000000000004",
+        "name": "Parse Route C",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          4940,
+          520
+        ],
+        "parameters": {
+          "jsCode": "const httpResp = $input.item.json;\nconst buildItem = $('Build Prompt C').item.json;\nlet route_to_market = null, reseller_name = null, route_reasoning = null, route_first_action = null, reseller_outreach_draft = null;\ntry {\n  const raw = httpResp.choices[0].message.content;\n  const clean = raw.replace(/```json\\n?/g, '').replace(/```\\n?/g, '').trim();\n  const parsed = JSON.parse(clean);\n  route_to_market = parsed.route || null;\n  reseller_name = (parsed.reseller_name === 'null' || !parsed.reseller_name) ? null : parsed.reseller_name;\n  route_reasoning = parsed.reasoning || null;\n  route_first_action = parsed.first_action || null;\n  reseller_outreach_draft = (parsed.reseller_outreach_draft === 'null' || !parsed.reseller_outreach_draft) ? null : parsed.reseller_outreach_draft;\n} catch(e) {\n  route_reasoning = 'Parse error: ' + e.message;\n}\nconst { _oai_body_c, ...rest } = buildItem;\nreturn { json: { ...rest, route_to_market, reseller_name, route_reasoning, route_first_action, reseller_outreach_draft } };"
+        }
+      },
+      {
+        "id": "collapse001-0000-0000-0000-000000000001",
+        "name": "Collapse to One",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2100,
+          900
+        ],
+        "parameters": {
+          "mode": "runOnceForAllItems",
+          "jsCode": "return [{ json: {} }];"
+        }
+      },
+      {
+        "parameters": {
+          "operation": "executeQuery",
+          "query": "SELECT total_adjustment::float AS total_adjustment, applied FROM get_score_adjustment($1, $2);",
+          "options": {
+            "queryReplacement": "={{ $json.buyer_type_detected || '' }},{{ $json.cpv_main || '' }}"
+          }
+        },
+        "type": "n8n-nodes-base.postgres",
+        "typeVersion": 2.5,
+        "position": [
+          3040,
+          1180
+        ],
+        "id": "b7e3a1c2-4f5d-4e6a-9b8c-1d2e3f4a5b6c",
+        "name": "Get Score Adjustment",
+        "credentials": {
+          "postgres": {
+            "id": "3LyxFWPy5v9bl0Zm",
+            "name": "Supabase Postgres - CBA Tenders"
+          }
+        },
+        "retryOnFail": true,
+        "maxTries": 2,
+        "waitBetweenTries": 2000,
+        "onError": "continueRegularOutput"
+      },
+      {
+        "parameters": {
+          "jsCode": "const tender = { ...$('Score Tender').item.json };\nconst a = $input.item.json || {};\nlet adj = parseFloat(a.total_adjustment);\nif (!isFinite(adj)) adj = 0;\nconst applied = Array.isArray(a.applied) ? a.applied : [];\nconst score = (tender.score || 0) + adj;\nconst flags = tender.red_flags || [];\nconst rawLabel = score >= 70 ? 'Hot' : score >= 45 ? 'Warm' : score >= 20 ? 'Cold' : 'Monitor';\nconst ladder = ['Monitor','Cold','Warm','Hot'];\nlet label = flags.length > 0 ? ladder[Math.max(0, ladder.indexOf(rawLabel)-1)] : rawLabel;\nif (flags.includes('deadline_passed')) label = 'Disqualified';\nreturn { json: { ...tender, score, label, score_adjustment: adj, adjustments_applied: applied } };"
+        },
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3200,
+          1180
+        ],
+        "id": "c8f4b2d3-5a6e-4f7b-8c9d-2e3f4a5b6c7d",
+        "name": "Apply Learned Adjustment"
+      }
+    ],
+    "connections": {
+      "When clicking 'Execute workflow'": {
+        "main": [
+          [
+            {
+              "node": "Tenderned Publicaties",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Tenderned Publicaties",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Tenderned Publicaties": {
+        "main": [
+          [
+            {
+              "node": "Verwerk Response",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verwerk Response": {
+        "main": [
+          [
+            {
+              "node": "Split Out",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Split Out": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Over Items": {
+        "main": [
+          [
+            {
+              "node": "Read Scraped Tenders",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Haal JSON Details",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Haal JSON Details": {
+        "main": [
+          [
+            {
+              "node": "Verwerk Tender",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare DB Record": {
+        "main": [
+          [
+            {
+              "node": "Save to Postgres",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save to Postgres": {
+        "main": [
+          [
+            {
+              "node": "Loop Over Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read Scraped Tenders": {
+        "main": [
+          [
+            {
+              "node": "Loop Intelligence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Loop Intelligence": {
+        "main": [
+          [
+            {
+              "node": "Collapse to One",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Keyword Filter",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Prepare AI Input": {
+        "main": [
+          [
+            {
+              "node": "AI Tender Analysis",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "GPT-4o Analysis Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "AI Tender Analysis",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Analysis Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "AI Tender Analysis",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "AI Tender Analysis": {
+        "main": [
+          [
+            {
+              "node": "Carry Context",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Carry Context": {
+        "main": [
+          [
+            {
+              "node": "ManageEngine Fit Engine",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "GPT-4o Fit Model": {
+        "ai_languageModel": [
+          [
+            {
+              "node": "ManageEngine Fit Engine",
+              "type": "ai_languageModel",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fit Output Parser": {
+        "ai_outputParser": [
+          [
+            {
+              "node": "ManageEngine Fit Engine",
+              "type": "ai_outputParser",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "ManageEngine Fit Engine": {
+        "main": [
+          [
+            {
+              "node": "Merge Analysis",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update Postgres": {
+        "main": [
+          [
+            {
+              "node": "Loop Intelligence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Read Analyzed Today": {
+        "main": [
+          [
+            {
+              "node": "Format Daily Brief",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Format Daily Brief": {
+        "main": [
+          [
+            {
+              "node": "Send Email Gmail",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Slack Alert",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark No Match": {
+        "main": [
+          [
+            {
+              "node": "Loop Intelligence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Keyword Filter": {
+        "main": [
+          [
+            {
+              "node": "Route on Keyword Result",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route on Keyword Result": {
+        "main": [
+          [
+            {
+              "node": "Score Tender",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Prompt A",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Mark No Match",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Score Tender": {
+        "main": [
+          [
+            {
+              "node": "Get Score Adjustment",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route on Label": {
+        "main": [
+          [
+            {
+              "node": "Prepare AI Input",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Build Cold Update",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Cold Update": {
+        "main": [
+          [
+            {
+              "node": "Update PG Cold",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Update PG Cold": {
+        "main": [
+          [
+            {
+              "node": "Loop Intelligence",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt A": {
+        "main": [
+          [
+            {
+              "node": "Call OpenAI Prompt A",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call OpenAI Prompt A": {
+        "main": [
+          [
+            {
+              "node": "Parse Prompt A",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Prompt A": {
+        "main": [
+          [
+            {
+              "node": "Route on Relevance",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Route on Relevance": {
+        "main": [
+          [
+            {
+              "node": "Score Tender",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Mark No Match",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Merge Analysis": {
+        "main": [
+          [
+            {
+              "node": "IF Hot?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "IF Hot?": {
+        "main": [
+          [
+            {
+              "node": "Build Prompt C",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Update Postgres",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Build Prompt C": {
+        "main": [
+          [
+            {
+              "node": "Call OpenAI Prompt C",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Call OpenAI Prompt C": {
+        "main": [
+          [
+            {
+              "node": "Parse Route C",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Parse Route C": {
+        "main": [
+          [
+            {
+              "node": "Update Postgres",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Collapse to One": {
+        "main": [
+          [
+            {
+              "node": "Read Analyzed Today",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Verwerk Tender": {
+        "main": [
+          [
+            {
+              "node": "Prepare DB Record",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Score Adjustment": {
+        "main": [
+          [
+            {
+              "node": "Apply Learned Adjustment",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Apply Learned Adjustment": {
+        "main": [
+          [
+            {
+              "node": "Route on Label",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Deivy Ramos",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-07-06T22:54:46.788Z",
+        "id": 663,
+        "workflowId": "AFyIJ2PzlHA469nq",
+        "versionId": "d130ab26-4d36-4216-918f-261c123afa34",
+        "event": "activated",
+        "userId": "dce01fe1-a34b-4d51-bd1b-b4f2ed944774"
+      },
+      {
+        "createdAt": "2026-07-06T22:54:46.748Z",
+        "id": 662,
+        "workflowId": "AFyIJ2PzlHA469nq",
+        "versionId": "d130ab26-4d36-4216-918f-261c123afa34",
+        "event": "deactivated",
+        "userId": "dce01fe1-a34b-4d51-bd1b-b4f2ed944774"
+      }
+    ]
+  }
+}
