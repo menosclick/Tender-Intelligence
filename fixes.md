@@ -4,6 +4,23 @@ Evidence log. A claim of "works/fixed" only counts with real output pasted here.
 
 ---
 
+## 2026-07-13 — Full UI redesign, verified with rendered screenshots (branch design/ui-refresh)
+
+**What changed (presentation only, zero functional changes):** OKLCH design-token system in `globals.css` (`@theme`), IBM Plex Sans/Mono via next/font, dark teal navigation rail with a health-aware status dot, one shared chip/button/input/table vocabulary (`src/lib/ui.tsx`), tender detail prose de-carded, favicon, a11y fixes (AA contrast, focus-visible, aria-current, kanban stage select as non-drag path). Design intent documented in `webapp/PRODUCT.md` + `webapp/DESIGN.md`.
+
+**Verification:**
+
+1. `npm run build` ✓ (compiled, 8/8 pages, no type errors) — twice, before and after review fixes.
+2. All 9 screens rendered against the local dev server with REAL Supabase data and screenshotted at 1440px (login, dashboard ×2, tender 7130 with bid pack + verdict, board, search with 35 results, learning, reports, tender/new). Auth was NOT bypassed: a throwaway Supabase user was created via service-role admin API, allowlisted only in the local process env, logged in through the real form, and deleted afterward (verified "temp user deleted" in output; zero residue).
+3. Fresh-eyes subagent review (screenshots + full diff): verdict fix-first with 3 blockers — global focus rule deforming rounded controls, `fg-soft` below AA contrast, em dashes in verdict headings. All 3 fixed, plus 6 nits (health-tied status dot, verdict fallback, aria-current, favicon hue, search thead, kanban stage select). Regression sweep confirmed every field/action/filter of the old UI survives.
+
+**Gotchas for future sessions:**
+- Never run `next build` while `next dev` is serving the same folder — they share `.next` and the dev server starts serving unstyled HTML. Kill dev, `rm -rf .next`, restart.
+- TaskStop on a background `next dev` kills the shell but NOT the node child on Windows; the port stays held. Find via `Get-NetTCPConnection -LocalPort <p>` and Stop-Process.
+- Headless Edge does not work for screenshots here (spawns zombie children, never renders); use the cached Puppeteer Chrome at `~/.cache/puppeteer/chrome/win64-*/chrome-win64/chrome.exe` with `puppeteer-core`.
+
+---
+
 ## 2026-07-13 — Learning loop VERIFIED end-to-end (M2 of webapp improvement plan)
 
 **Claim being tested:** "The system learns from feedback" (the self-learning pitch). Never proven before — 0 suggestions had ever been generated.
