@@ -25,12 +25,17 @@ export default async function DashboardPage({
     .order("deadline", { ascending: true });
   if (!showCold) query = query.in("label", ["Hot", "Warm"]);
 
-  const [{ data: tenders }, scraped] = await Promise.all([
+  // "New" = scraped in the last 24h (covers this morning's 09:00 run until tomorrow's).
+  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+
+  const [{ data: tenders }, scraped, { data: fresh }] = await Promise.all([
     query,
     admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
+    admin.from("tenders_scraped").select("id").gte("scraped_at", since),
   ]);
 
   const rows = tenders ?? [];
+  const freshIds = new Set((fresh ?? []).map((f) => f.id));
 
   const segment = (active: boolean) =>
     `px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
@@ -99,13 +104,20 @@ export default async function DashboardPage({
                 className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
               >
                 <td className="max-w-sm px-4 py-3">
-                  <Link
-                    href={`/tender/${t.id}`}
-                    className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
-                    title={t.title ?? ""}
-                  >
-                    {t.title}
-                  </Link>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <Link
+                      href={`/tender/${t.id}`}
+                      className="truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                      title={t.title ?? ""}
+                    >
+                      {t.title}
+                    </Link>
+                    {freshIds.has(t.id) && (
+                      <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-fg">
+                        New
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td
                   className="max-w-[14rem] truncate px-4 py-3 text-fg-mid"
