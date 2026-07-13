@@ -49,6 +49,12 @@ body {
   @apply bg-canvas font-sans text-fg antialiased;
 }
 
+/* Tailwind 4 preflight sets buttons to cursor:default; interactive means pointer. */
+button:not(:disabled),
+[role="button"]:not(:disabled) {
+  cursor: pointer;
+}
+
 ::selection {
   background: var(--color-accent-soft);
   color: var(--color-accent-fg);
