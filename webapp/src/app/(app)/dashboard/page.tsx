@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { labelChip, deadlineText, deadlineClass } from "@/lib/format";
+import { deadlineText, deadlineClass } from "@/lib/format";
+import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -31,90 +32,108 @@ export default async function DashboardPage({
 
   const rows = tenders ?? [];
 
+  const segment = (active: boolean) =>
+    `px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
+      active
+        ? "bg-accent text-surface"
+        : "bg-surface text-fg-mid hover:bg-sunken"
+    }`;
+
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Open tenders</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            {rows.length} qualified &amp; open, ranked by score · {scraped.count ?? 0} scraped in total
-          </p>
-        </div>
-        <div className="flex gap-2 text-sm">
-          <Link
-            href="/tender/new"
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 hover:bg-neutral-50"
-          >
-            ＋ Add tender
-          </Link>
-          <Link
-            href="/dashboard"
-            className={`rounded-md px-3 py-1.5 ${!showCold ? "bg-accent text-white" : "border border-neutral-300 bg-white hover:bg-neutral-50"}`}
-          >
-            Warm+
-          </Link>
-          <Link
-            href="/dashboard?show=all"
-            className={`rounded-md px-3 py-1.5 ${showCold ? "bg-accent text-white" : "border border-neutral-300 bg-white hover:bg-neutral-50"}`}
-          >
-            Include Cold
-          </Link>
-        </div>
-      </div>
+      <PageHeader
+        title="Open tenders"
+        sub={`${rows.length} qualified and open, ranked by score · ${scraped.count ?? 0} scraped in total`}
+        actions={
+          <>
+            <Link href="/tender/new" className={btnSecondary}>
+              <svg
+                viewBox="0 0 16 16"
+                className="h-3.5 w-3.5"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                aria-hidden="true"
+              >
+                <path d="M8 3v10M3 8h10" />
+              </svg>
+              Add tender
+            </Link>
+            <div className="flex overflow-hidden rounded-lg border border-line-strong">
+              <Link
+                href="/dashboard"
+                aria-current={!showCold ? "page" : undefined}
+                className={segment(!showCold)}
+              >
+                Warm+
+              </Link>
+              <Link
+                href="/dashboard?show=all"
+                aria-current={showCold ? "page" : undefined}
+                className={`border-l border-line-strong ${segment(showCold)}`}
+              >
+                Include Cold
+              </Link>
+            </div>
+          </>
+        }
+      />
 
-      <div className="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
+      <div className="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
         <table className="w-full text-sm">
           <thead>
-            <tr className="border-b border-neutral-200 text-left text-xs uppercase tracking-wide text-neutral-400">
-              <th className="px-4 py-2 font-semibold">Tender</th>
-              <th className="px-4 py-2 font-semibold">Buyer</th>
-              <th className="px-4 py-2 font-semibold">Label</th>
-              <th className="px-4 py-2 font-semibold">Score</th>
-              <th className="px-4 py-2 font-semibold">Deadline</th>
-              <th className="px-4 py-2 font-semibold">Board</th>
+            <tr className={`border-b border-line text-left ${microLabel}`}>
+              <th className="px-4 py-2.5">Tender</th>
+              <th className="px-4 py-2.5">Buyer</th>
+              <th className="px-4 py-2.5">Label</th>
+              <th className="px-4 py-2.5 text-right">Score</th>
+              <th className="px-4 py-2.5">Deadline</th>
+              <th className="px-4 py-2.5">Board</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((t) => (
               <tr
                 key={t.id}
-                className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50"
+                className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
               >
-                <td className="max-w-sm px-4 py-2.5">
+                <td className="max-w-sm px-4 py-3">
                   <Link
                     href={`/tender/${t.id}`}
-                    className="block truncate font-medium text-neutral-900 hover:text-accent hover:underline"
+                    className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
                     title={t.title ?? ""}
                   >
                     {t.title}
                   </Link>
                 </td>
                 <td
-                  className="max-w-[14rem] truncate px-4 py-2.5 text-neutral-600"
+                  className="max-w-[14rem] truncate px-4 py-3 text-fg-mid"
                   title={t.buyer ?? ""}
                 >
                   {t.buyer}
                 </td>
-                <td className="px-4 py-2.5">
-                  <span
-                    className={`rounded-md px-2 py-0.5 text-xs font-bold ${labelChip(t.label)}`}
-                  >
-                    {t.label}
-                  </span>
+                <td className="px-4 py-3">
+                  <LabelChip label={t.label} />
                 </td>
-                <td className="px-4 py-2.5 font-semibold tabular-nums">{t.score}</td>
-                <td className={`px-4 py-2.5 tabular-nums ${deadlineClass(t.days_to_deadline)}`}>
+                <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                  {t.score}
+                </td>
+                <td
+                  className={`px-4 py-3 tabular-nums ${deadlineClass(t.days_to_deadline)}`}
+                >
                   {deadlineText(t.deadline, t.days_to_deadline)}
                 </td>
-                <td className="px-4 py-2.5 text-xs text-neutral-500">
+                <td className="px-4 py-3 text-xs text-fg-soft">
                   {t.pipeline_stage ?? "—"}
                 </td>
               </tr>
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-10 text-center text-neutral-400">
-                  No open {showCold ? "" : "Warm+ "}tenders right now. The scraper runs daily at 09:00.
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-fg-soft">
+                  No open {showCold ? "" : "Warm+ "}tenders right now. The
+                  scraper runs daily at 09:00.
                 </td>
               </tr>
             )}

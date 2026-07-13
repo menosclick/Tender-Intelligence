@@ -3,7 +3,8 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { moveCard, updateCard, removeCard } from "@/lib/actions";
-import { BOARD_STAGES, type BoardStage, labelChip } from "@/lib/format";
+import { BOARD_STAGES, type BoardStage } from "@/lib/format";
+import { LabelChip, btnPrimary, inputCls } from "@/lib/ui";
 
 export type BoardCard = {
   cardId: number;
@@ -54,14 +55,17 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
               }}
               onDragLeave={() => setDragOver(null)}
               onDrop={(e) => onDrop(e, stage)}
-              className={`w-64 shrink-0 rounded-xl border p-2 transition-colors ${
+              className={`w-64 shrink-0 rounded-xl border p-2 transition-colors duration-150 ${
                 dragOver === stage
-                  ? "border-accent bg-accent-soft"
-                  : "border-neutral-200 bg-neutral-100/60"
+                  ? "border-accent bg-accent-soft/50"
+                  : "border-line/60 bg-sunken/70"
               }`}
             >
-              <p className="px-1.5 py-1 text-xs font-bold uppercase tracking-wide text-neutral-500">
-                {stage} <span className="font-normal">({items.length})</span>
+              <p className="flex items-center justify-between px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-fg-soft">
+                {stage}
+                <span className="rounded-full bg-surface px-1.5 py-0.5 font-medium tabular-nums text-fg-soft">
+                  {items.length}
+                </span>
               </p>
               <div className="mt-1 space-y-2">
                 {items.map((c) => (
@@ -71,29 +75,25 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
                     onDragStart={(e) =>
                       e.dataTransfer.setData("text/plain", String(c.cardId))
                     }
-                    className="cursor-grab rounded-lg border border-neutral-200 bg-white p-3 shadow-sm active:cursor-grabbing"
+                    className="cursor-grab rounded-lg border border-line bg-surface p-3 transition-colors duration-150 hover:border-line-strong active:cursor-grabbing"
                   >
                     <Link
                       href={`/tender/${c.tenderId}`}
-                      className="block text-sm font-medium leading-snug hover:text-accent hover:underline"
+                      className="block text-sm font-medium leading-snug text-fg hover:text-accent-fg hover:underline"
                     >
                       {c.title}
                     </Link>
-                    <p className="mt-1 truncate text-xs text-neutral-500" title={c.buyer}>
+                    <p className="mt-1 truncate text-xs text-fg-soft" title={c.buyer}>
                       {c.buyer}
                     </p>
                     <div className="mt-2 flex items-center gap-2 text-xs">
-                      {c.label && (
-                        <span className={`rounded px-1.5 py-0.5 font-bold ${labelChip(c.label)}`}>
-                          {c.score}
-                        </span>
-                      )}
+                      {c.label && <LabelChip label={c.label} score={c.score} />}
                       {c.deadline && (
                         <span
                           className={
                             (c.daysToDeadline ?? 99) < 14
-                              ? "font-semibold text-red-600"
-                              : "text-neutral-500"
+                              ? "font-semibold tabular-nums text-hot"
+                              : "tabular-nums text-fg-soft"
                           }
                         >
                           {c.daysToDeadline !== null && c.daysToDeadline >= 0
@@ -102,25 +102,24 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
                         </span>
                       )}
                       {c.assignee && (
-                        <span className="ml-auto truncate text-neutral-400">{c.assignee}</span>
+                        <span className="ml-auto truncate text-fg-soft">
+                          {c.assignee}
+                        </span>
                       )}
                     </div>
                     <button
                       onClick={() => setOpenCard(openCard === c.cardId ? null : c.cardId)}
-                      className="mt-2 text-xs text-neutral-400 hover:text-neutral-700"
+                      className="mt-2 text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
                     >
                       {openCard === c.cardId ? "Close" : "Edit"}
                     </button>
                     {openCard === c.cardId && (
-                      <CardEditor
-                        card={c}
-                        onDone={() => setOpenCard(null)}
-                      />
+                      <CardEditor card={c} onDone={() => setOpenCard(null)} />
                     )}
                   </div>
                 ))}
                 {items.length === 0 && (
-                  <p className="px-1.5 py-3 text-center text-xs text-neutral-400">
+                  <p className="rounded-lg border border-dashed border-line px-1.5 py-4 text-center text-xs text-fg-soft">
                     Drop here
                   </p>
                 )}
@@ -136,24 +135,38 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
 function CardEditor({ card, onDone }: { card: BoardCard; onDone: () => void }) {
   const [assignee, setAssignee] = useState(card.assignee ?? "");
   const [notes, setNotes] = useState(card.notes ?? "");
+  const [stage, setStage] = useState(card.stage);
   const [pending, startTransition] = useTransition();
 
   return (
-    <div className="mt-2 space-y-2 border-t border-neutral-100 pt-2">
+    <div className="mt-2 space-y-2 border-t border-line pt-2.5">
+      {/* Non-drag path for stage changes (keyboard / touch) */}
+      <select
+        value={stage}
+        onChange={(e) => setStage(e.target.value)}
+        aria-label="Stage"
+        className={`${inputCls} px-2 py-1 text-xs`}
+      >
+        {BOARD_STAGES.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
       <input
         value={assignee}
         onChange={(e) => setAssignee(e.target.value)}
         placeholder="Assignee"
-        className="w-full rounded border border-neutral-300 px-2 py-1 text-xs"
+        className={`${inputCls} px-2 py-1 text-xs`}
       />
       <textarea
         value={notes}
         onChange={(e) => setNotes(e.target.value)}
         placeholder="Notes"
         rows={2}
-        className="w-full rounded border border-neutral-300 px-2 py-1 text-xs"
+        className={`${inputCls} px-2 py-1 text-xs`}
       />
-      <div className="flex justify-between">
+      <div className="flex items-center justify-between">
         <button
           disabled={pending}
           onClick={() =>
@@ -162,10 +175,13 @@ function CardEditor({ card, onDone }: { card: BoardCard; onDone: () => void }) {
                 assignee: assignee || null,
                 notes: notes || null,
               });
+              if (stage !== card.stage) {
+                await moveCard(card.cardId, stage as BoardStage);
+              }
               onDone();
             })
           }
-          className="rounded bg-accent px-2 py-1 text-xs font-semibold text-white disabled:opacity-50"
+          className="rounded-md bg-accent px-2.5 py-1 text-xs font-semibold text-surface transition-colors duration-150 hover:bg-accent-strong disabled:opacity-50"
         >
           Save
         </button>
@@ -176,7 +192,7 @@ function CardEditor({ card, onDone }: { card: BoardCard; onDone: () => void }) {
               await removeCard(card.cardId);
             })
           }
-          className="text-xs text-red-500 hover:underline disabled:opacity-50"
+          className="text-xs font-medium text-hot transition-colors duration-150 hover:underline disabled:opacity-50"
         >
           Remove from board
         </button>

@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { PageHeader, microLabel } from "@/lib/ui";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
@@ -39,18 +40,6 @@ function euro(n: number): string {
   return "€ " + n.toLocaleString("nl-NL");
 }
 
-function Tile({ label, value, sub }: { label: string; value: string; sub?: string }) {
-  return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-      <div className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
-        {label}
-      </div>
-      <div className="mt-1 text-2xl font-bold tabular-nums text-neutral-900">{value}</div>
-      {sub && <div className="mt-0.5 text-xs text-neutral-500">{sub}</div>}
-    </div>
-  );
-}
-
 function BreakdownTable({
   title,
   columns,
@@ -61,15 +50,15 @@ function BreakdownTable({
   rows: (string | number)[][];
 }) {
   return (
-    <div className="overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-      <h2 className="border-b border-neutral-100 px-4 py-2.5 text-sm font-semibold text-neutral-700">
+    <div className="overflow-hidden rounded-xl border border-line bg-surface">
+      <h2 className="border-b border-line px-4 py-2.5 text-sm font-semibold text-fg">
         {title}
       </h2>
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-neutral-100 text-left text-xs uppercase tracking-wide text-neutral-400">
+          <tr className={`border-b border-line text-left ${microLabel}`}>
             {columns.map((c, i) => (
-              <th key={c} className={`px-4 py-2 font-semibold ${i > 0 ? "text-right" : ""}`}>
+              <th key={c} className={`px-4 py-2 ${i > 0 ? "text-right" : ""}`}>
                 {c}
               </th>
             ))}
@@ -77,11 +66,11 @@ function BreakdownTable({
         </thead>
         <tbody>
           {rows.map((r, i) => (
-            <tr key={i} className="border-b border-neutral-50 last:border-0">
+            <tr key={i} className="border-b border-line/40 last:border-0">
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className={`px-4 py-2 ${j > 0 ? "text-right tabular-nums text-neutral-600" : "max-w-[16rem] truncate text-neutral-800"}`}
+                  className={`px-4 py-2 ${j > 0 ? "text-right tabular-nums text-fg-mid" : "max-w-[16rem] truncate text-fg"}`}
                 >
                   {cell}
                 </td>
@@ -90,7 +79,10 @@ function BreakdownTable({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="px-4 py-6 text-center text-neutral-400">
+              <td
+                colSpan={columns.length}
+                className="px-4 py-6 text-center text-fg-soft"
+              >
                 No data yet
               </td>
             </tr>
@@ -236,41 +228,56 @@ export default async function ReportsPage() {
   const manualCount = all.filter((t) => t.platform === "manual").length;
   const dateStr = new Date().toLocaleDateString("nl-NL", { dateStyle: "long" });
 
+  const kpis = [
+    {
+      label: "Active pipeline",
+      value: String(activeCards.length),
+      sub: "tenders on the board (New → Submitted)",
+    },
+    {
+      label: "Pipeline value",
+      value: euro(pipelineValue),
+      sub: "known contract value, active stages",
+    },
+    {
+      label: "Win rate",
+      value: winRate === null ? "—" : `${winRate}%`,
+      sub: `${won} won · ${lost} lost`,
+    },
+    { label: "Value won", value: euro(wonValue), sub: "from Won board cards" },
+  ];
+
   return (
     <div className="mx-auto max-w-5xl space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Reports</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            Tender intelligence overview · {dateStr} · {all.length} tenders scanned
-            {manualCount > 0 ? ` (${manualCount} registered manually)` : ""}
-          </p>
-        </div>
-        <PrintButton />
-      </div>
+      <PageHeader
+        title="Reports"
+        sub={`Tender intelligence overview · ${dateStr} · ${all.length} tenders scanned${manualCount > 0 ? ` (${manualCount} registered manually)` : ""}`}
+        actions={<PrintButton />}
+      />
 
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
-        <Tile
-          label="Active pipeline"
-          value={String(activeCards.length)}
-          sub="tenders on the board (New → Submitted)"
-        />
-        <Tile
-          label="Pipeline value"
-          value={euro(pipelineValue)}
-          sub="known contract value, active stages"
-        />
-        <Tile
-          label="Win rate"
-          value={winRate === null ? "—" : `${winRate}%`}
-          sub={`${won} won · ${lost} lost`}
-        />
-        <Tile label="Value won" value={euro(wonValue)} sub="from Won board cards" />
-      </div>
+      <dl className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface md:flex-row md:divide-x md:divide-y-0">
+        {kpis.map((k) => (
+          <div key={k.label} className="flex-1 px-5 py-4">
+            <dt className={microLabel}>{k.label}</dt>
+            <dd className="mt-1 text-2xl font-semibold tabular-nums text-fg">
+              {k.value}
+            </dd>
+            <dd className="mt-0.5 text-xs text-fg-soft">{k.sub}</dd>
+          </div>
+        ))}
+      </dl>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <BreakdownTable title="Bid board — count & value by stage" columns={["Stage", "Tenders", "Value"]} rows={byStage} />
-        <BreakdownTable title="Buyer types (qualified tenders)" columns={["Type", "Tenders"]} rows={buyerTypes} />
+        <BreakdownTable
+          title="Bid board: count & value by stage"
+          columns={["Stage", "Tenders", "Value"]}
+          rows={byStage}
+        />
+        <BreakdownTable
+          title="Buyer types (qualified tenders)"
+          columns={["Type", "Tenders"]}
+          rows={buyerTypes}
+        />
       </div>
 
       <BreakdownTable
@@ -280,14 +287,22 @@ export default async function ReportsPage() {
       />
 
       <div className="grid gap-6 md:grid-cols-2">
-        <BreakdownTable title="Domains (CPV, qualified tenders)" columns={["Domain", "Tenders", "Value"]} rows={domains} />
-        <BreakdownTable title="Monthly intake (last 6 months)" columns={["Month", "Scanned", "Qualified"]} rows={monthly} />
+        <BreakdownTable
+          title="Domains (CPV, qualified tenders)"
+          columns={["Domain", "Tenders", "Value"]}
+          rows={domains}
+        />
+        <BreakdownTable
+          title="Monthly intake (last 6 months)"
+          columns={["Month", "Scanned", "Qualified"]}
+          rows={monthly}
+        />
       </div>
 
-      <p className="text-xs text-neutral-400 print:block">
-        Generated by CBA Tender Intelligence. Contract values reflect only tenders where a
-        value is known — TenderNed rarely publishes them; manually registered bids usually
-        carry the real figures.
+      <p className="text-xs leading-relaxed text-fg-soft print:block">
+        Generated by CBA Tender Intelligence. Contract values reflect only
+        tenders where a value is known; TenderNed rarely publishes them, and
+        manually registered bids usually carry the real figures.
       </p>
     </div>
   );

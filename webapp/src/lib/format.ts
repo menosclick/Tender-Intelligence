@@ -14,13 +14,24 @@ export function daysUntil(dateStr: string | null): number | null {
 }
 
 export const LABEL_CHIP: Record<string, string> = {
-  Hot: "bg-red-100 text-red-800",
-  Warm: "bg-amber-100 text-amber-800",
-  Cold: "bg-slate-200 text-slate-700",
+  Hot: "bg-hot-soft text-hot",
+  Warm: "bg-warm-soft text-warm",
+  Cold: "bg-cold-soft text-cold",
 };
 
 export function labelChip(label: string | null) {
-  return LABEL_CHIP[label ?? ""] ?? "bg-neutral-100 text-neutral-600";
+  return LABEL_CHIP[label ?? ""] ?? "bg-sunken text-fg-mid";
+}
+
+// Dot color matching each label chip, so the chip never relies on tint alone.
+export const LABEL_DOT: Record<string, string> = {
+  Hot: "bg-hot",
+  Warm: "bg-warm",
+  Cold: "bg-cold",
+};
+
+export function labelDot(label: string | null) {
+  return LABEL_DOT[label ?? ""] ?? "bg-fg-soft";
 }
 
 // Real names + maxima for score_breakdown d1..d7 (from scoring_rules.json).
@@ -42,11 +53,11 @@ export function deadlineText(deadline: string | null, days: number | null) {
 }
 
 export function deadlineClass(days: number | null) {
-  if (days === null) return "text-neutral-500";
-  if (days < 0) return "text-neutral-400";
-  if (days < 14) return "font-semibold text-red-600";
-  if (days < 28) return "text-amber-700";
-  return "text-neutral-600";
+  if (days === null) return "text-fg-soft";
+  if (days < 0) return "text-fg-soft";
+  if (days < 14) return "font-semibold text-hot";
+  if (days < 28) return "text-warm";
+  return "text-fg-mid";
 }
 
 // jsonb fields sometimes arrive as arrays, sometimes as JSON strings.

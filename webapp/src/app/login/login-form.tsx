@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createSupabaseBrowser } from "@/lib/supabase/client";
+import { btnPrimary, btnSecondary, inputCls } from "@/lib/ui";
 
 export function LoginForm() {
   const router = useRouter();
@@ -39,10 +40,13 @@ export function LoginForm() {
   }
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-6 shadow-sm">
+    <div className="rounded-xl border border-line bg-surface p-6">
       <form onSubmit={signInWithPassword} className="space-y-4">
         <div>
-          <label htmlFor="email" className="mb-1 block text-sm font-medium">
+          <label
+            htmlFor="email"
+            className="mb-1.5 block text-xs font-semibold text-fg-mid"
+          >
             Email
           </label>
           <input
@@ -52,11 +56,14 @@ export function LoginForm() {
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className={inputCls}
           />
         </div>
         <div>
-          <label htmlFor="password" className="mb-1 block text-sm font-medium">
+          <label
+            htmlFor="password"
+            className="mb-1.5 block text-xs font-semibold text-fg-mid"
+          >
             Password
           </label>
           <input
@@ -66,33 +73,26 @@ export function LoginForm() {
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className={inputCls}
           />
         </div>
         {error && (
-          <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+          <p className="rounded-lg border border-hot-line bg-hot-soft px-3 py-2 text-sm text-hot">
             {error}
           </p>
         )}
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-accent px-3 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
-        >
+        <button type="submit" disabled={loading} className={`${btnPrimary} w-full`}>
           {loading ? "Signing in…" : "Sign in"}
         </button>
       </form>
 
-      <div className="my-4 flex items-center gap-3 text-xs text-neutral-400">
-        <div className="h-px flex-1 bg-neutral-200" />
+      <div className="my-4 flex items-center gap-3 text-xs text-fg-soft">
+        <div className="h-px flex-1 bg-line" />
         or
-        <div className="h-px flex-1 bg-neutral-200" />
+        <div className="h-px flex-1 bg-line" />
       </div>
 
-      <button
-        onClick={signInWithGoogle}
-        className="w-full rounded-md border border-neutral-300 bg-white px-3 py-2 text-sm font-medium hover:bg-neutral-50"
-      >
+      <button onClick={signInWithGoogle} className={`${btnSecondary} w-full`}>
         Continue with Google
       </button>
     </div>

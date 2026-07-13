@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { decideSuggestion, runLearning } from "@/lib/actions";
+import { btnPrimary, btnSecondary } from "@/lib/ui";
 
 type Suggestion = {
   id: number;
@@ -18,17 +19,19 @@ export function SuggestionCard({ suggestion: s }: { suggestion: Suggestion }) {
   const delta = (s.suggested_points ?? 0) - (s.current_points ?? 0);
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
+    <div className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <p className="text-sm font-medium text-neutral-800">{s.rationale}</p>
-          <p className="mt-1 font-mono text-xs text-neutral-500">
-            {s.dimension} / {s.target} · {s.current_points ?? 0} →{" "}
-            <span className="font-semibold text-accent">{s.suggested_points}</span>{" "}
+        <div className="min-w-0">
+          <p className="text-sm font-medium leading-relaxed text-fg">
+            {s.rationale}
+          </p>
+          <p className="mt-1.5 font-mono text-xs text-fg-soft">
+            {s.dimension}/{s.target} · {s.current_points ?? 0} →{" "}
+            <span className="font-medium text-accent-fg">{s.suggested_points}</span>{" "}
             ({delta >= 0 ? "+" : ""}
             {delta.toFixed(1)})
             {s.confidence != null && (
-              <span className="ml-2 text-neutral-400">
+              <span className="ml-2">
                 confidence {Math.round(s.confidence * 100)}%
               </span>
             )}
@@ -38,14 +41,14 @@ export function SuggestionCard({ suggestion: s }: { suggestion: Suggestion }) {
           <button
             disabled={pending}
             onClick={() => startTransition(() => decideSuggestion(s.id, true))}
-            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold text-white hover:opacity-90 disabled:opacity-50"
+            className={btnPrimary}
           >
             Approve
           </button>
           <button
             disabled={pending}
             onClick={() => startTransition(() => decideSuggestion(s.id, false))}
-            className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-50"
+            className={btnSecondary}
           >
             Dismiss
           </button>
@@ -61,7 +64,7 @@ export function RunLearningButton() {
     <button
       disabled={pending}
       onClick={() => startTransition(() => runLearning())}
-      className="rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-sm font-medium hover:bg-neutral-50 disabled:opacity-50"
+      className={btnSecondary}
     >
       {pending ? "Analyzing…" : "Run learning"}
     </button>

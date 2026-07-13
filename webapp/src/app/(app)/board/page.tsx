@@ -1,5 +1,6 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { daysUntil } from "@/lib/format";
+import { PageHeader } from "@/lib/ui";
 import { BoardClient, type BoardCard } from "./board-client";
 
 export const dynamic = "force-dynamic";
@@ -42,11 +43,11 @@ export default async function BoardPage() {
 
   return (
     <div>
-      <h1 className="text-lg font-semibold">Bid board</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        Drag cards between stages. Add tenders from their detail page.
-      </p>
-      <div className="mt-4">
+      <PageHeader
+        title="Bid board"
+        sub="Drag cards between stages. Add tenders from their detail page."
+      />
+      <div className="mt-5">
         <BoardClient cards={board} />
       </div>
     </div>

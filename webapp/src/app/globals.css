@@ -1,10 +1,70 @@
 @import "tailwindcss";
 
 @theme {
-  --color-accent: #1e6b6b;
-  --color-accent-soft: #e3efed;
+  --font-sans: var(--font-plex-sans), "Segoe UI", system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "Cascadia Mono", monospace;
+
+  /* Neutrals, tinted toward the brand teal (hue 195–210). No pure white/black. */
+  --color-canvas: oklch(0.977 0.004 195);
+  --color-surface: oklch(0.995 0.002 195);
+  --color-sunken: oklch(0.955 0.006 195);
+  --color-line: oklch(0.9 0.008 195);
+  --color-line-strong: oklch(0.84 0.012 195);
+  --color-fg: oklch(0.26 0.02 210);
+  --color-fg-mid: oklch(0.45 0.015 210);
+  --color-fg-soft: oklch(0.55 0.012 210);
+
+  /* Navigation rail: the one committed color surface. */
+  --color-rail: oklch(0.27 0.03 210);
+  --color-rail-hover: oklch(0.33 0.03 210);
+  --color-rail-active: oklch(0.42 0.06 195);
+  --color-rail-fg: oklch(0.93 0.006 195);
+  --color-rail-fg-soft: oklch(0.72 0.015 200);
+  --color-rail-line: oklch(0.35 0.025 210);
+
+  /* Accent: primary actions, selection, focus. */
+  --color-accent: oklch(0.48 0.08 195);
+  --color-accent-strong: oklch(0.42 0.08 195);
+  --color-accent-soft: oklch(0.94 0.025 195);
+  --color-accent-fg: oklch(0.36 0.07 195);
+
+  /* Tender labels + semantic states. Always paired with text, never color alone. */
+  --color-hot: oklch(0.44 0.16 25);
+  --color-hot-soft: oklch(0.95 0.025 25);
+  --color-hot-line: oklch(0.85 0.06 25);
+  --color-warm: oklch(0.47 0.11 70);
+  --color-warm-soft: oklch(0.95 0.04 85);
+  --color-warm-line: oklch(0.86 0.07 85);
+  --color-cold: oklch(0.45 0.02 240);
+  --color-cold-soft: oklch(0.93 0.008 240);
+  --color-ok: oklch(0.42 0.1 150);
+  --color-ok-soft: oklch(0.95 0.03 150);
+  --color-ok-line: oklch(0.85 0.05 150);
+  --color-ok-vivid: oklch(0.72 0.14 150); /* status dots on the dark rail */
+  --color-warm-vivid: oklch(0.78 0.13 80);
+  --color-hot-vivid: oklch(0.68 0.19 25);
 }
 
 body {
-  @apply bg-neutral-50 text-neutral-900 antialiased;
+  @apply bg-canvas font-sans text-fg antialiased;
+}
+
+::selection {
+  background: var(--color-accent-soft);
+  color: var(--color-accent-fg);
+}
+
+/* Inputs/selects/textareas carry their own focus ring via inputCls. */
+:where(a, button, [tabindex], [draggable="true"]):focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--color-accent) 60%, transparent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { labelChip, deadlineText, deadlineClass, daysUntil } from "@/lib/format";
+import { deadlineText, deadlineClass, daysUntil } from "@/lib/format";
+import { LabelChip, PageHeader, btnPrimary, inputCls, microLabel } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
 
@@ -62,24 +63,23 @@ export default async function SearchPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <h1 className="text-lg font-semibold">Search the archive</h1>
-      <p className="mt-1 text-sm text-neutral-500">
-        All scraped tenders, including ones the scoring pipeline disqualified.
-      </p>
+      <PageHeader
+        title="Search the archive"
+        sub="All scraped tenders, including ones the scoring pipeline disqualified."
+      />
 
-      <form method="get" className="mt-4 rounded-xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_10rem_8rem_auto_auto]">
+      <form
+        method="get"
+        className="mt-5 rounded-xl border border-line bg-surface p-4"
+      >
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-[1fr_10rem_8rem_auto_auto] sm:items-center">
           <input
             name="q"
             defaultValue={q}
-            placeholder="Search title, description, buyer… (Dutch)"
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            placeholder="Search title, description, buyer (Dutch)"
+            className={inputCls}
           />
-          <select
-            name="label"
-            defaultValue={label}
-            className="rounded-md border border-neutral-300 bg-white px-2 py-2 text-sm"
-          >
+          <select name="label" defaultValue={label} className={inputCls}>
             <option value="">Any label</option>
             <option>Hot</option>
             <option>Warm</option>
@@ -90,49 +90,68 @@ export default async function SearchPage({
             name="cpv"
             defaultValue={cpv}
             placeholder="CPV prefix"
-            className="rounded-md border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+            className={`${inputCls} font-mono`}
           />
-          <label className="flex items-center gap-2 text-sm text-neutral-600">
-            <input type="checkbox" name="open" value="1" defaultChecked={open === "1"} />
+          <label className="flex items-center gap-2 text-sm text-fg-mid">
+            <input
+              type="checkbox"
+              name="open"
+              value="1"
+              defaultChecked={open === "1"}
+              className="h-4 w-4 accent-accent"
+            />
             Open only
           </label>
-          <button className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white hover:opacity-90">
-            Search
-          </button>
+          <button className={btnPrimary}>Search</button>
         </div>
       </form>
 
       {hasQuery && (
-        <div className="mt-4 overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-sm">
-          <p className="border-b border-neutral-200 px-4 py-2 text-xs text-neutral-500">
+        <div className="mt-5 overflow-hidden rounded-xl border border-line bg-surface">
+          <p className="border-b border-line px-4 py-2 text-xs text-fg-soft">
             {results.length} result{results.length === 1 ? "" : "s"}
             {results.length === 100 ? " (first 100 shown)" : ""}
           </p>
           <table className="w-full text-sm">
+            <thead>
+              <tr className={`border-b border-line text-left ${microLabel}`}>
+                <th className="px-4 py-2.5">Tender</th>
+                <th className="px-4 py-2.5">Buyer</th>
+                <th className="px-4 py-2.5">Label</th>
+                <th className="px-4 py-2.5 text-right">Score</th>
+                <th className="px-4 py-2.5">Deadline</th>
+              </tr>
+            </thead>
             <tbody>
               {results.map((t) => {
                 const days = daysUntil(t.sluiting_datum);
                 return (
-                  <tr key={t.id} className="border-b border-neutral-100 last:border-0 hover:bg-neutral-50">
-                    <td className="max-w-sm px-4 py-2.5">
+                  <tr
+                    key={t.id}
+                    className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
+                  >
+                    <td className="max-w-sm px-4 py-3">
                       <Link
                         href={`/tender/${t.id}`}
-                        className="block truncate font-medium hover:text-accent hover:underline"
+                        className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
                         title={t.naam ?? ""}
                       >
                         {t.naam}
                       </Link>
                     </td>
-                    <td className="max-w-[14rem] truncate px-4 py-2.5 text-neutral-600" title={t.opdrachtgever ?? ""}>
+                    <td
+                      className="max-w-[14rem] truncate px-4 py-3 text-fg-mid"
+                      title={t.opdrachtgever ?? ""}
+                    >
                       {t.opdrachtgever}
                     </td>
-                    <td className="px-4 py-2.5">
-                      <span className={`rounded-md px-2 py-0.5 text-xs font-bold ${labelChip(t.label)}`}>
-                        {t.label ?? "unscored"}
-                      </span>
+                    <td className="px-4 py-3">
+                      <LabelChip label={t.label} />
                     </td>
-                    <td className="px-4 py-2.5 tabular-nums">{t.score ?? "—"}</td>
-                    <td className={`px-4 py-2.5 tabular-nums ${deadlineClass(days)}`}>
+                    <td className="px-4 py-3 text-right font-semibold tabular-nums">
+                      {t.score ?? "—"}
+                    </td>
+                    <td className={`px-4 py-3 tabular-nums ${deadlineClass(days)}`}>
                       {deadlineText(t.sluiting_datum, days)}
                     </td>
                   </tr>
@@ -140,7 +159,7 @@ export default async function SearchPage({
               })}
               {results.length === 0 && (
                 <tr>
-                  <td className="px-4 py-8 text-center text-neutral-400">
+                  <td colSpan={5} className="px-4 py-10 text-center text-sm text-fg-soft">
                     No tenders match. Try fewer filters or a shorter keyword.
                   </td>
                 </tr>

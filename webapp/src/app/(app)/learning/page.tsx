@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { PageHeader, microLabel } from "@/lib/ui";
 import { SuggestionCard, RunLearningButton } from "./learning-client";
 
 export const dynamic = "force-dynamic";
@@ -41,52 +42,50 @@ export default async function LearningPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <div className="flex items-start justify-between">
-        <div>
-          <h1 className="text-lg font-semibold">Learning</h1>
-          <p className="mt-1 text-sm text-neutral-500">
-            The system proposes scoring improvements from real outcomes. You approve what goes live.
-          </p>
-        </div>
-        <RunLearningButton />
-      </div>
+      <PageHeader
+        title="Learning"
+        sub="The system proposes scoring improvements from real outcomes. You approve what goes live."
+        actions={<RunLearningButton />}
+      />
 
-      <div className="mt-5 grid grid-cols-5 gap-3">
+      <div className="mt-5 flex divide-x divide-line overflow-hidden rounded-xl border border-line bg-surface">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-xl border border-neutral-200 bg-white p-3 shadow-sm">
-            <p className="text-xl font-bold tabular-nums">{s.value}</p>
-            <p className="mt-0.5 text-[11px] leading-tight text-neutral-500">{s.label}</p>
+          <div key={s.label} className="flex-1 px-4 py-3">
+            <p className="text-lg font-semibold tabular-nums">{s.value}</p>
+            <p className="mt-0.5 text-xs leading-tight text-fg-soft">{s.label}</p>
           </div>
         ))}
       </div>
 
-      <h2 className="mt-8 text-sm font-semibold text-neutral-700">
+      <h2 className={`${microLabel} mt-9 border-b border-line pb-1.5`}>
         Suggestions to review ({pendingRows.length})
       </h2>
-      <div className="mt-2 space-y-3">
+      <div className="mt-3 space-y-3">
         {pendingRows.map((s) => (
           <SuggestionCard key={s.id} suggestion={s} />
         ))}
         {pendingRows.length === 0 && (
-          <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-8 text-center text-sm text-neutral-400">
-            No suggestions yet. As you mark tenders Won/Lost and Relevant/Not, the system finds
-            patterns and proposes scoring changes here. Click “Run learning” once you have a few
-            outcomes recorded.
+          <div className="rounded-xl border border-dashed border-line-strong px-6 py-9 text-center text-sm leading-relaxed text-fg-soft">
+            No suggestions yet. As you mark tenders Won/Lost and Relevant/Not,
+            the system finds patterns and proposes scoring changes here. Click
+            &ldquo;Run learning&rdquo; once you have a few outcomes recorded.
           </div>
         )}
       </div>
 
       {(applied.data ?? []).length > 0 && (
         <>
-          <h2 className="mt-8 text-sm font-semibold text-neutral-700">Recently applied</h2>
-          <div className="mt-2 space-y-2">
+          <h2 className={`${microLabel} mt-9 border-b border-line pb-1.5`}>
+            Recently applied
+          </h2>
+          <div className="mt-3 space-y-2">
             {(applied.data ?? []).map((s) => (
               <div
                 key={s.id}
-                className="flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-2 text-sm"
+                className="flex items-center justify-between gap-4 rounded-lg border border-ok-line bg-ok-soft px-4 py-2.5 text-sm"
               >
-                <span className="text-green-800">{s.rationale}</span>
-                <span className="font-mono text-xs text-green-700">
+                <span className="text-ok">{s.rationale}</span>
+                <span className="shrink-0 font-mono text-xs text-ok">
                   {s.dimension}/{s.target} {s.suggested_points >= 0 ? "+" : ""}
                   {s.suggested_points}
                 </span>

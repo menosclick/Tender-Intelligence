@@ -24,33 +24,42 @@ export function FeedbackWidget({
   }
 
   const pill = (active: boolean, tone: "good" | "bad" | "neutral") =>
-    `rounded-md px-3 py-1.5 text-sm font-medium border transition-colors ${
+    `rounded-full border px-3 py-1.5 text-sm font-medium transition-colors duration-150 disabled:opacity-50 ${
       active
         ? tone === "good"
-          ? "border-green-600 bg-green-50 text-green-700"
+          ? "border-ok-line bg-ok-soft text-ok"
           : tone === "bad"
-            ? "border-red-500 bg-red-50 text-red-700"
-            : "border-accent bg-accent-soft text-accent"
-        : "border-neutral-300 bg-white text-neutral-600 hover:bg-neutral-50"
+            ? "border-hot-line bg-hot-soft text-hot"
+            : "border-accent bg-accent-soft text-accent-fg"
+        : "border-line-strong bg-surface text-fg-mid hover:bg-sunken"
     }`;
 
   return (
-    <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm">
-      <h2 className="mb-1 text-sm font-semibold text-neutral-700">
-        Your feedback <span className="font-normal text-neutral-400">— teaches the system</span>
+    <section className="rounded-xl border border-line bg-surface p-5">
+      <h2 className="text-sm font-semibold text-fg">
+        Your feedback{" "}
+        <span className="font-normal text-fg-soft">teaches the system</span>
       </h2>
       <div className="mt-3 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="w-24 text-xs text-neutral-500">Relevant?</span>
-          <button disabled={pending} onClick={() => set("relevance", "relevant")} className={pill(relevance === "relevant", "good")}>
-            👍 Relevant
+          <span className="w-24 text-xs text-fg-soft">Relevant?</span>
+          <button
+            disabled={pending}
+            onClick={() => set("relevance", "relevant")}
+            className={pill(relevance === "relevant", "good")}
+          >
+            Relevant
           </button>
-          <button disabled={pending} onClick={() => set("relevance", "not_relevant")} className={pill(relevance === "not_relevant", "bad")}>
-            👎 Not relevant
+          <button
+            disabled={pending}
+            onClick={() => set("relevance", "not_relevant")}
+            className={pill(relevance === "not_relevant", "bad")}
+          >
+            Not relevant
           </button>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <span className="w-24 text-xs text-neutral-500">Outcome?</span>
+          <span className="w-24 text-xs text-fg-soft">Outcome?</span>
           {[
             ["bidding", "Bidding", "neutral"],
             ["won", "Won", "good"],
@@ -68,9 +77,10 @@ export function FeedbackWidget({
           ))}
         </div>
       </div>
-      <p className="mt-3 text-xs text-neutral-400">
-        Won/Lost tunes scoring weights; relevance tunes what gets surfaced. Nothing changes scores
-        until you approve a suggestion on the Learning page.
+      <p className="mt-3 text-xs leading-relaxed text-fg-soft">
+        Won/Lost tunes scoring weights; relevance tunes what gets surfaced.
+        Nothing changes scores until you approve a suggestion on the Learning
+        page.
       </p>
     </section>
   );
