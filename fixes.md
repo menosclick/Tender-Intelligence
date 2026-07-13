@@ -14,6 +14,8 @@ Evidence log. A claim of "works/fixed" only counts with real output pasted here.
 2. All 9 screens rendered against the local dev server with REAL Supabase data and screenshotted at 1440px (login, dashboard ×2, tender 7130 with bid pack + verdict, board, search with 35 results, learning, reports, tender/new). Auth was NOT bypassed: a throwaway Supabase user was created via service-role admin API, allowlisted only in the local process env, logged in through the real form, and deleted afterward (verified "temp user deleted" in output; zero residue).
 3. Fresh-eyes subagent review (screenshots + full diff): verdict fix-first with 3 blockers — global focus rule deforming rounded controls, `fg-soft` below AA contrast, em dashes in verdict headings. All 3 fixed, plus 6 nits (health-tied status dot, verdict fallback, aria-current, favicon hue, search thead, kanban stage select). Regression sweep confirmed every field/action/filter of the old UI survives.
 
+**Promoted to production 2026-07-13 (approved by Cathrine):** fast-forward merge `design/ui-refresh` → `main` (2bbdfdd..0da006b, no merge commit). Smoke test against the live domain: `https://cba-tender-intelligence.vercel.app/login` returns HTTP 200 serving the new markup (marker "CBA Benelux · internal access only" replaces the old em-dash copy) and `/icon.svg` returns 200. Output: `PROD SERVES NEW DESIGN`.
+
 **Gotchas for future sessions:**
 - Never run `next build` while `next dev` is serving the same folder — they share `.next` and the dev server starts serving unstyled HTML. Kill dev, `rm -rf .next`, restart.
 - TaskStop on a background `next dev` kills the shell but NOT the node child on Windows; the port stays held. Find via `Get-NetTCPConnection -LocalPort <p>` and Stop-Process.
