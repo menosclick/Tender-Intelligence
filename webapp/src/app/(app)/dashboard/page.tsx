@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass } from "@/lib/format";
+import { deadlineText, deadlineClass, BOARD_STAGES } from "@/lib/format";
 import { LabelChip, PageHeader, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList, Columns } from "@/lib/viz";
 
@@ -55,7 +55,7 @@ export default async function DashboardPage({
   const nowUtc = new Date();
   const windowStart = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 5, 1));
 
-  const [{ data: open }, scraped, { data: fresh }, { data: notRelevant }, { data: board }, { data: qualifiedAll }] =
+  const [{ data: open }, scraped, { data: fresh }, { data: feedback }, { data: board }, { data: qualifiedAll }] =
     await Promise.all([
       admin
         .from("v_app_tenders")
@@ -67,12 +67,8 @@ export default async function DashboardPage({
         .order("deadline", { ascending: true }),
       admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
       admin.from("tenders_scraped").select("id").gte("scraped_at", since),
-      admin
-        .from("tender_feedback")
-        .select("tender_id")
-        .eq("kind", "relevance")
-        .eq("value", "not_relevant"),
-      admin.from("bid_pipeline").select("stage"),
+      admin.from("tender_feedback").select("tender_id,kind,value"),
+      admin.from("bid_pipeline").select("tender_id,stage"),
       // Historical context for the intake chart — bounded to the visible
       // window so the query can never hit PostgREST's 1,000-row cap silently.
       admin
@@ -86,7 +82,66 @@ export default async function DashboardPage({
 
   const openRows = (open ?? []) as Row[];
   const freshIds = new Set((fresh ?? []).map((f) => f.id));
-  const notRelevantIds = new Set((notRelevant ?? []).map((f) => f.tender_id));
+  const fb = feedback ?? [];
+  const notRelevantIds = new Set(
+    fb.filter((f) => f.kind === "relevance" && f.value === "not_relevant").map((f) => f.tender_id)
+  );
+  const reviewedIds = new Set(
+    fb.filter((f) => f.kind === "relevance").map((f) => f.tender_id)
+  );
+  const outcomeByTender = new Map(
+    fb.filter((f) => f.kind === "outcome").map((f) => [f.tender_id, f.value])
+  );
+
+  // Board cards that likely need an outcome recorded: Bidding/Submitted with a
+  // deadline already past and no Won/Lost yet — the fuel the learning loop lacks.
+  const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
+  const decidedCards = boardCards.filter((b) => ["Bidding", "Submitted"].includes(b.stage));
+  const { data: decidedTenders } = decidedCards.length
+    ? await admin
+        .from("tenders_scraped")
+        .select("id,naam,sluiting_datum")
+        .in("id", decidedCards.map((b) => b.tender_id))
+    : { data: [] as { id: number; naam: string | null; sluiting_datum: string | null }[] };
+  const today = new Date().toISOString().slice(0, 10);
+  const needsOutcome = (decidedTenders ?? []).filter(
+    (t) =>
+      t.sluiting_datum !== null &&
+      t.sluiting_datum < today &&
+      !["won", "lost"].includes(outcomeByTender.get(t.id) ?? "")
+  );
+
+  // "Needs attention" — computed actions, priority order, deduped by tender.
+  const attention: { id: number; title: string; note: string; urgent: boolean }[] = [];
+  const seen = new Set<number>();
+  const push = (id: number, title: string | null, note: string, urgent = false) => {
+    if (seen.has(id)) return;
+    seen.add(id);
+    attention.push({ id, title: title ?? `Tender #${id}`, note, urgent });
+  };
+  for (const t of needsOutcome)
+    push(t.id, t.naam, "Deadline passed — record the outcome (Won / Lost)", true);
+  for (const t of openRows)
+    if (
+      (t.label === "Hot" || t.label === "Warm") &&
+      (t.days_to_deadline ?? 99) <= 14 &&
+      !t.pipeline_stage &&
+      !notRelevantIds.has(t.id)
+    )
+      push(t.id, t.title, `Closing in ${t.days_to_deadline}d — decide bid or drop`, true);
+  for (const t of openRows)
+    if (t.label === "Hot" && freshIds.has(t.id))
+      push(t.id, t.title, "New Hot from this morning's scrape — review it");
+  for (const t of openRows)
+    if (t.label === "Hot" && !reviewedIds.has(t.id) && !t.pipeline_stage)
+      push(t.id, t.title, "Hot but never reviewed — mark Relevant / Not relevant");
+  const attentionShown = attention.slice(0, 6);
+
+  // Next real dates, soonest first.
+  const upcoming = [...openRows]
+    .filter((t) => t.days_to_deadline !== null)
+    .sort((a, b) => (a.days_to_deadline ?? 0) - (b.days_to_deadline ?? 0))
+    .slice(0, 6);
 
   // KPIs read the whole open set — the overview stays stable while filters
   // below slice the charts and the queue.
@@ -186,6 +241,81 @@ export default async function DashboardPage({
         <Kpi label="On bid board" value={kpis.onBoard} sub="New → Submitted" />
       </dl>
 
+      {/* Cockpit panels: what needs a decision, and what's coming */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <ChartCard title="Needs attention">
+          {attentionShown.length === 0 ? (
+            <p className="py-4 text-center text-xs text-fg-soft">
+              All caught up — nothing needs a decision right now.
+            </p>
+          ) : (
+            <ul className="space-y-2.5">
+              {attentionShown.map((a) => (
+                <li key={a.id} className="text-sm leading-snug">
+                  <Link
+                    href={`/tender/${a.id}`}
+                    className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                    title={a.title}
+                  >
+                    {a.title}
+                  </Link>
+                  <p className={`text-xs ${a.urgent ? "font-medium text-hot" : "text-fg-mid"}`}>
+                    {a.note}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ChartCard>
+        <ChartCard title="Upcoming deadlines">
+          {upcoming.length === 0 ? (
+            <p className="py-4 text-center text-xs text-fg-soft">No open deadlines ahead.</p>
+          ) : (
+            <ul className="space-y-2">
+              {upcoming.map((t) => (
+                <li key={t.id} className="flex items-baseline gap-3 text-sm">
+                  <span
+                    className={`w-24 shrink-0 tabular-nums ${deadlineClass(t.days_to_deadline)}`}
+                  >
+                    {t.deadline}
+                  </span>
+                  <Link
+                    href={`/tender/${t.id}`}
+                    className="min-w-0 flex-1 truncate text-fg hover:text-accent-fg hover:underline"
+                    title={t.title ?? ""}
+                  >
+                    {t.title}
+                  </Link>
+                  <span className={`shrink-0 text-xs tabular-nums ${deadlineClass(t.days_to_deadline)}`}>
+                    {(t.days_to_deadline ?? 0) > 365 ? "long-term" : `${t.days_to_deadline}d`}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* Bid pipeline funnel — counts per stage, straight to the board */}
+      <Link
+        href="/board"
+        className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3 transition-colors duration-150 hover:border-line-strong"
+      >
+        <span className={`${microLabel} mr-2`}>Bid pipeline</span>
+        {BOARD_STAGES.map((s, i) => {
+          const n = boardCards.filter((b) => b.stage === s).length;
+          return (
+            <span key={s} className="flex items-center gap-2 text-sm">
+              {i > 0 && <span className="text-fg-soft">→</span>}
+              <span className={n > 0 ? "font-medium text-fg" : "text-fg-soft"}>
+                {s} <span className="tabular-nums">{n}</span>
+              </span>
+            </span>
+          );
+        })}
+        <span className="ml-auto text-xs font-medium text-accent-fg">Open board →</span>
+      </Link>
+
       {/* Filters — slice the charts and the queue below */}
       <form
         method="get"
@@ -226,19 +356,6 @@ export default async function DashboardPage({
           </Link>
         )}
       </form>
-
-      {/* Charts */}
-      <div className="mt-5 grid gap-5 lg:grid-cols-3">
-        <ChartCard title="By deadline">
-          <HBarList rows={byDeadline} />
-        </ChartCard>
-        <ChartCard title="By buyer type">
-          <HBarList rows={byBuyer} />
-        </ChartCard>
-        <ChartCard title="Qualified intake · last months">
-          <Columns points={intake} />
-        </ChartCard>
-      </div>
 
       {/* Work queue */}
       <h2 className={`${microLabel} mt-8`}>
@@ -321,6 +438,19 @@ export default async function DashboardPage({
             )}
           </tbody>
         </table>
+      </div>
+
+      {/* Analytics context — follows the same filters as the queue */}
+      <div className="mt-5 grid gap-5 lg:grid-cols-3">
+        <ChartCard title="By deadline">
+          <HBarList rows={byDeadline} />
+        </ChartCard>
+        <ChartCard title="By buyer type">
+          <HBarList rows={byBuyer} />
+        </ChartCard>
+        <ChartCard title="Qualified intake · last months">
+          <Columns points={intake} />
+        </ChartCard>
       </div>
     </div>
   );
