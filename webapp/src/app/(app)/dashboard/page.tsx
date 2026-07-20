@@ -28,14 +28,25 @@ export default async function DashboardPage({
   // "New" = scraped in the last 24h (covers this morning's 09:00 run until tomorrow's).
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
 
-  const [{ data: tenders }, scraped, { data: fresh }] = await Promise.all([
-    query,
-    admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
-    admin.from("tenders_scraped").select("id").gte("scraped_at", since),
-  ]);
+  const [{ data: tenders }, scraped, { data: fresh }, { data: notRelevant }] =
+    await Promise.all([
+      query,
+      admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
+      admin.from("tenders_scraped").select("id").gte("scraped_at", since),
+      admin
+        .from("tender_feedback")
+        .select("tender_id")
+        .eq("kind", "relevance")
+        .eq("value", "not_relevant"),
+    ]);
 
-  const rows = tenders ?? [];
   const freshIds = new Set((fresh ?? []).map((f) => f.id));
+  // Feedback must have a visible consequence: rows marked "Not relevant" drop
+  // to the bottom, dimmed — still inspectable, no longer competing for attention.
+  const notRelevantIds = new Set((notRelevant ?? []).map((f) => f.tender_id));
+  const rows = [...(tenders ?? [])].sort(
+    (a, b) => Number(notRelevantIds.has(a.id)) - Number(notRelevantIds.has(b.id))
+  );
 
   const segment = (active: boolean) =>
     `px-3 py-1.5 text-sm font-medium transition-colors duration-150 ${
@@ -48,7 +59,11 @@ export default async function DashboardPage({
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="Open tenders"
-        sub={`${rows.length} qualified and open, ranked by score · ${scraped.count ?? 0} scraped in total`}
+        sub={`${rows.length} qualified and open, ranked by score${
+          rows.filter((t) => notRelevantIds.has(t.id)).length > 0
+            ? ` (${rows.filter((t) => notRelevantIds.has(t.id)).length} marked not relevant)`
+            : ""
+        } · ${scraped.count ?? 0} scraped in total`}
         actions={
           <>
             <Link href="/tender/new" className={btnSecondary}>
@@ -101,13 +116,17 @@ export default async function DashboardPage({
             {rows.map((t) => (
               <tr
                 key={t.id}
-                className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
+                className={`border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60 ${
+                  notRelevantIds.has(t.id) ? "bg-sunken/50" : ""
+                }`}
               >
                 <td className="max-w-sm px-4 py-3">
                   <div className="flex min-w-0 items-center gap-2">
                     <Link
                       href={`/tender/${t.id}`}
-                      className="truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                      className={`truncate font-medium hover:text-accent-fg hover:underline ${
+                        notRelevantIds.has(t.id) ? "text-fg-mid" : "text-fg"
+                      }`}
                       title={t.title ?? ""}
                     >
                       {t.title}
@@ -115,6 +134,11 @@ export default async function DashboardPage({
                     {freshIds.has(t.id) && (
                       <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-fg">
                         New
+                      </span>
+                    )}
+                    {notRelevantIds.has(t.id) && (
+                      <span className="shrink-0 rounded-full bg-sunken px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-fg-mid">
+                        Not relevant
                       </span>
                     )}
                   </div>

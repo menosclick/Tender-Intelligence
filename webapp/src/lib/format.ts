@@ -17,6 +17,7 @@ export const LABEL_CHIP: Record<string, string> = {
   Hot: "bg-hot-soft text-hot",
   Warm: "bg-warm-soft text-warm",
   Cold: "bg-cold-soft text-cold",
+  Monitor: "bg-sunken text-fg-mid",
 };
 
 export function labelChip(label: string | null) {
@@ -28,6 +29,7 @@ export const LABEL_DOT: Record<string, string> = {
   Hot: "bg-hot",
   Warm: "bg-warm",
   Cold: "bg-cold",
+  Monitor: "bg-fg-soft",
 };
 
 export function labelDot(label: string | null) {
@@ -35,13 +37,19 @@ export function labelDot(label: string | null) {
 }
 
 // Real names + maxima for score_breakdown d1..d7 (from scoring_rules.json).
+// d2 and d7 are listed apart: TenderNed publishes no contract value and no
+// relationship data exists yet, so they can't meaningfully score (audit
+// 2026-07-20: d7 = 0 on every row ever, d2 ≤ 2/20). Rendering them as bars
+// erodes trust in the score; they show as a footnote instead.
 export const SCORE_DIMENSIONS: { key: string; label: string; max: number }[] = [
   { key: "d1", label: "Product fit (ManageEngine)", max: 30 },
-  { key: "d2", label: "Estimated value", max: 20 },
   { key: "d3", label: "Procedure type", max: 15 },
   { key: "d4", label: "Authority type", max: 15 },
   { key: "d5", label: "Deadline runway", max: 10 },
   { key: "d6", label: "Recency", max: 5 },
+];
+export const SCORE_DIMENSIONS_SPARSE: { key: string; label: string; max: number }[] = [
+  { key: "d2", label: "Estimated value", max: 20 },
   { key: "d7", label: "CBA relationship", max: 5 },
 ];
 
@@ -49,6 +57,9 @@ export function deadlineText(deadline: string | null, days: number | null) {
   if (!deadline) return "—";
   if (days === null) return deadline;
   if (days < 0) return `${deadline} (closed)`;
+  // Beyond a year it's a framework/DAS-style window, not a bid-by date —
+  // "(2897d)" reads like a data error and drowns the real urgency scale.
+  if (days > 365) return `${deadline} (long-term)`;
   return `${deadline} (${days}d)`;
 }
 

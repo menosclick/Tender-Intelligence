@@ -61,7 +61,7 @@ button:not(:disabled),
 }
 
 /* Inputs/selects/textareas carry their own focus ring via inputCls. */
-:where(a, button, [tabindex], [draggable="true"]):focus-visible {
+:where(a, button, summary, [tabindex], [draggable="true"]):focus-visible {
   outline: 2px solid color-mix(in oklch, var(--color-accent) 60%, transparent);
   outline-offset: 2px;
 }

@@ -58,3 +58,40 @@ Every `n8n_update_partial_workflow` / full-update PUT against workflow `AFyIJ2Pz
 ## 2026-07-13 — Vercel git deploys: commit author must be recognized
 
 First two git-triggered deployments sat in status UNKNOWN forever, no logs. Cause: commit author email (`derson_92@hotmail.com`) not linked to the Vercel team. Fix: author commits as `270447224+menosclick@users.noreply.github.com` → build Ready in 49s. Production alias verified serving the git build (login page smoke-tested via HTTP).
+
+---
+
+## 2026-07-14 — M3 alert branch: added, tested, and a REAL bug found in the fail-open path
+
+**Goal:** alert when `AI Tender Analysis` / `ManageEngine Fit Engine` exhaust retries (they fail open with `continueRegularOutput` — tenders were saved with empty analysis, silently).
+
+**Unblock discovered:** the KNOWN ISSUE of 2026-07-13 ("n8n MCP cannot update workflows") applies ONLY to the community `n8n-mcp` server. Two working alternatives verified today:
+1. The official claude.ai n8n connector (`update_workflow`, atomic ops) — applied 5 ops to prod (`AFyIJ2PzlHA469nq`, 63→65 nodes).
+2. Direct REST `PUT /api/v1/workflows/{id}` with a sanitized body ({name, nodes, connections, settings:{executionOrder, timezone}} only) — the 2026-07-13 failure was the community MCP resending cloud-only settings fields, not the API itself.
+
+**What was added to prod (additive only, no rewiring):** `Merge Analysis` fans out to new `AI Failure?` (IF) → `Slack AI Failure Alert` (DM to derson, same credential as the daily Slack Alert, `onError: continueRegularOutput` so a Slack outage can never break the pipeline). Backup first: `docs/workflow-backup-2026-07-14-pre-m3-alerts.json`.
+
+**REAL BUG FOUND by forced-failure test:** the documented sentinel path in `Merge Analysis` (`executive_summary = 'AI analysis failed - skipped'`) NEVER triggers in the real failure mode. Evidence (disposable clone `AgC5GzQ3Ulh66ugG`, scoped to synthetic tender `TEST-M3-ALERT-99999`, broken model `gpt-4o-mini-BROKEN-M3-TEST`):
+- Exec **11398**: AI agent failed (`error: The resource you are requesting could not be found`) → `Carry Context` swallowed it (no `.error` field, `analysis_output` undefined) → Fit Engine ran normally → Merge Analysis took the NORMAL path → `executive_summary: ""` (empty string, NOT the sentinel) → narrow IF condition routed FALSE → **no alert fired**.
+- Fix: condition broadened to `sentinel OR empty/whitespace executive_summary`.
+- Exec **11399** (same clone, corrected condition): AI failed → IF routed TRUE → **Slack API responded `ok: true`**, message delivered to channel D09KN4R4SC8 (derson DM), ts 1783982161.684529. Real response body, not a green status.
+
+**State:** clone deleted (GET → Not Found). PROD still carries the NARROW condition — the auto-mode permission classifier requires Cathrine to approve the one-op fix (`updateNodeParameters` on `AI Failure?`). Until applied, the prod alert will NOT fire on a real AI failure.
+
+**Cleanup:** synthetic tender deleted + residue counts verified by query (see below; first attempt rolled back on a bad column name, retried after a transient Supabase MCP 502).
+
+**Cleanup verified (post-502 retry):** `synthetic_left: 0` · `rows_analyzed_in_test_window: 0` (zero real tenders touched) · `pending: 0` — DB identical to pre-test state.
+
+---
+
+## 2026-07-20 — Webapp "make it make sense" audit + 10 presentation fixes (branch audit/make-sense-2026-07-20)
+
+**Audit method:** all 7 pages' code read; field-coverage queries against live Supabase; 7 screenshots per round with REAL login (throwaway user via admin API, allowlisted only in local env, deleted after — "temp user deleted" verified in all 3 rounds). Verdict doc: `os/AI_Operating_System/02_CLIENTS/cba-benelux/plans/2026-07-20-webapp-audit-veredicto.md`. Shots: `docs/audit-shots-2026-07-20/` (before).
+
+**Data findings (queries, not guesses):** d7 "CBA relationship" = 0 in 20/20 rows with a breakdown, ever; d2 "Estimated value" max seen 2/20 (waarde empty for all TenderNed rows; only the 2 manual tenders have it: "171580", "495000"). Feedback reality: outcome bidding×3/no_bid×3 (zero won/lost), relevance 3/2 — explains why the learning page showed 0 suggestions (RPC threshold ≥3 per group). reseller_outreach_draft existed on 2 tenders but was never rendered anywhere. keyword_matches non-empty on 20 rows, never rendered. Tender 5784 deadline 2034 rendered as "(2897d)".
+
+**Shipped (all presentation-layer, zero n8n/scoring changes):** breakdown shows 5 scoreable bars + honest footnote for d2/d7; dashboard drops not-relevant-marked rows to the bottom (sunken wash + "Not relevant" chip + subtitle count — feedback now has a visible consequence); learning page shows progress toward the RPC threshold ("Closest to a suggestion: N of 3", only groups below threshold); detail renders outreach draft (collapsible + CopyButton with aria-live), Value (formatted when numeric), "Surfaced by keyword match: …" provenance; deadlines >365d render "long-term"; Monitor label added to search filter + chip styles; reports trims pre-scraper all-zero months; dead fetch of trefwoorden/type_opdracht removed.
+
+**Verification:** `next build` clean ×2; final screenshots confirm every change with real data (dashboard shows both not-relevant rows dimmed at bottom, tender 7409 shows footnote "Estimated value 2/20 · CBA relationship 0/5. Total out of 100" summing to score 60, learning shows "onderwijs 2 of 3 · gemeente 2 of 3 · overig 1 of 3", board card shows "long-term", reports starts 2026-04). Fresh-eyes adversarial subagent review: 1 blocker (WCAG contrast of opacity-55 dimming) — fixed by switching to sunken wash + fg-mid text at full opacity; 6 nits applied (RPC-accurate empty-state copy, no misleading "3 of 3", € formatting, corrected footnote wording, CopyButton try/catch + aria-live, `summary` added to global focus-visible). Verified in shots-final round.
+
+**NOT deployed to prod yet** — branch pushed for Vercel preview; promotion pending Derson's OK.

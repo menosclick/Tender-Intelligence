@@ -5,11 +5,13 @@ import {
   deadlineText,
   deadlineClass,
   SCORE_DIMENSIONS,
+  SCORE_DIMENSIONS_SPARSE,
   asArray,
 } from "@/lib/format";
 import { LabelChip, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard } from "@/lib/actions";
 import { FeedbackWidget } from "./feedback";
+import { CopyButton } from "./copy-button";
 
 export const dynamic = "force-dynamic";
 
@@ -85,10 +87,10 @@ export default async function TenderDetailPage({
   const [{ data: t }, { data: raw }, { data: fb }, { data: bidPack }, { data: verdict }] =
     await Promise.all([
       admin.from("v_app_tenders").select("*").eq("id", tenderId).maybeSingle(),
-      // description lives on the base table (read-only)
+      // description, value and filter provenance live on the base table (read-only)
       admin
         .from("tenders_scraped")
-        .select("beschrijving,trefwoorden,procedure,type_opdracht")
+        .select("beschrijving,procedure,waarde,keyword_matches")
         .eq("id", tenderId)
         .maybeSingle(),
       admin.from("tender_feedback").select("kind,value").eq("tender_id", tenderId),
@@ -167,7 +169,21 @@ export default async function TenderDetailPage({
           </span>
         )}
         {raw?.procedure && <span>Procedure: {raw.procedure}</span>}
+        {raw?.waarde && (
+          <span>
+            Value:{" "}
+            {/^\d+$/.test(raw.waarde.trim())
+              ? `€ ${Number(raw.waarde.trim()).toLocaleString("nl-NL")}`
+              : raw.waarde}
+          </span>
+        )}
       </div>
+      {(raw?.keyword_matches ?? []).length > 0 && (
+        <p className="mt-2 text-xs text-fg-soft">
+          Surfaced by keyword match:{" "}
+          {(raw!.keyword_matches as string[]).join(" · ")}
+        </p>
+      )}
       <div className="mt-5 flex gap-2">
         {t.url && (
           <a
@@ -388,6 +404,21 @@ export default async function TenderDetailPage({
                 {t.route_first_action}
               </p>
             )}
+            {t.reseller_outreach_draft && (
+              <details className="mt-3 rounded-lg border border-line bg-surface">
+                <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium text-accent-fg">
+                  Outreach draft{t.reseller_name ? ` for ${t.reseller_name}` : ""} · generated
+                </summary>
+                <div className="border-t border-line px-4 py-3">
+                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-mid">
+                    {t.reseller_outreach_draft}
+                  </p>
+                  <div className="mt-3">
+                    <CopyButton text={t.reseller_outreach_draft} />
+                  </div>
+                </div>
+              </details>
+            )}
           </Section>
         )}
 
@@ -496,6 +527,14 @@ export default async function TenderDetailPage({
                 );
               })}
             </div>
+            <p className="mt-3 text-xs leading-relaxed text-fg-soft">
+              Rarely scoreable (TenderNed publishes no contract value; no
+              relationship data yet):{" "}
+              {SCORE_DIMENSIONS_SPARSE.map(
+                (d) => `${d.label} ${breakdown[d.key] ?? 0}/${d.max}`
+              ).join(" · ")}
+              . Total out of 100.
+            </p>
           </Section>
         )}
 

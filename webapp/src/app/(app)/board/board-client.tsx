@@ -97,7 +97,9 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
                           }
                         >
                           {c.daysToDeadline !== null && c.daysToDeadline >= 0
-                            ? `${c.daysToDeadline}d left`
+                            ? c.daysToDeadline > 365
+                              ? "long-term"
+                              : `${c.daysToDeadline}d left`
                             : c.deadline}
                         </span>
                       )}

@@ -221,9 +221,12 @@ export default async function ReportsPage() {
       if (t.label && !["Disqualified", "Monitor"].includes(t.label)) e.qualified += 1;
     }
   }
-  const monthly = [...months.entries()].map(
+  const monthlyAll = [...months.entries()].map(
     ([k, v]) => [k, v.scanned, v.qualified] as (string | number)[]
   );
+  // Trim leading months from before the scraper existed — all-zero rows read as failure.
+  const firstActive = monthlyAll.findIndex((r) => (r[1] as number) > 0);
+  const monthly = firstActive === -1 ? monthlyAll : monthlyAll.slice(firstActive);
 
   const manualCount = all.filter((t) => t.platform === "manual").length;
   const dateStr = new Date().toLocaleDateString("nl-NL", { dateStyle: "long" });

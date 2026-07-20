@@ -84,6 +84,7 @@ export default async function SearchPage({
             <option>Hot</option>
             <option>Warm</option>
             <option>Cold</option>
+            <option>Monitor</option>
             <option>Disqualified</option>
           </select>
           <input
