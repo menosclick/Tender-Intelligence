@@ -124,21 +124,23 @@ export function asArray(v: unknown): string[] {
   return [];
 }
 
+// The real tender lifecycle (DB migration bid_pipeline_stages_tender_lifecycle,
+// approved 2026-07-21): working stages Identified → Analysis → Q&A → Submitted
+// → Award, terminals Won / Lost / Dropped.
 export const BOARD_STAGES = [
-  "New",
-  "Reviewing",
-  "Bidding",
+  "Identified",
+  "Analysis",
+  "Q&A",
   "Submitted",
+  "Award",
   "Won",
   "Lost",
   "Dropped",
 ] as const;
 export type BoardStage = (typeof BOARD_STAGES)[number];
 
-// The DB keeps the original stage values (CHECK constraint + the currently
-// deployed app still writes them). The UI renders the real tender-lifecycle
-// names. Storing these names — and adding the missing "Award" stage between
-// Submitted and Won — requires the pending DB migration (needs approval).
+// Legacy display shim: stored values were renamed in the DB, but any stray
+// legacy value (e.g. from an old export) still renders as its new name.
 export const STAGE_LABELS: Record<string, string> = {
   New: "Identified",
   Reviewing: "Analysis",

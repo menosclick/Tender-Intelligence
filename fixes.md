@@ -119,3 +119,12 @@ Merge `77536d7` fast-forward to main, pushed. Vercel production deployment `dpl_
 **Verification:** `next build` clean ×3; screenshots with real data in `docs/redesign-shots-2026-07-20/` (dashboard shows KPI row + 3 charts + demoted not-relevant rows; tender 7409 shows the new Why-this-score section). NOT in prod — branch pushed for preview, promotion pending Derson's OK.
 
 **Cockpit iteration (commits 7bf5355 + this one):** dashboard reshaped to Derson's wireframe — Needs-attention panel (computed: overdue outcomes on board cards, closing ≤14d without a bid decision, fresh/unreviewed Hots), Upcoming-deadlines agenda, bid-pipeline funnel strip, charts moved below the queue. Focused fresh-eyes review: 1 blocker (upcoming deadlines resurfaced not-relevant tenders — fixed) + nits applied: outcome queries bounded per board card (no silent 1,000-row cap), no_bid counts as a final outcome, closing group sorted soonest-first with "+N more" overflow, "Closing today" at 0d, aria-hidden funnel arrows, title fallback. Coherence fix in recordFeedback: recording Won/Lost on a tender now moves its board card to Won/Lost (mirror of moveCard's outcome capture). Verified: build clean, screenshots shots-v6 (not-relevant rows absent from upcoming, KNMI/OM overdue-outcome nudges present).
+
+---
+
+## 2026-07-21 — Dashboard v3 PROMOTED + DB migrations applied (Derson: "aprobado")
+
+**Prod:** main fast-forwarded to 79ee3b9 (dashboard v3: domain chart, hidden not-relevants, deadline calendar) — deployment mtjsz7k7i Ready, alias verified, /login 200. Then two approved migrations applied via Supabase MCP:
+1. `tender_milestones_for_deadline_calendar` (OP 4) — table + RLS + read policy created, `{"success":true}`.
+2. `bid_pipeline_stages_tender_lifecycle` (OP 3) — stages renamed in DB (New→Identified, Reviewing→Analysis, Bidding→Q&A), **Award** stage added, constraint tightened to the 8 lifecycle values, `{"success":true}`.
+Coordinated code deploy: BOARD_STAGES → lifecycle names + Award column, outcomeMap Q&A/Submitted/Award→bidding, activeStages/stageOrder/CALENDAR_STAGES updated, STAGE_LABELS kept as legacy display shim. Verified with real-data screenshots (shots-v9): board shows Identified 1 / Analysis 1 / Q&A 0 / Submitted 3 / Award, all 5 cards render.

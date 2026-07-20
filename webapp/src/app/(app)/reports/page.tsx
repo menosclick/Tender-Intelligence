@@ -143,7 +143,7 @@ export default async function ReportsPage() {
   const won = (outcomes ?? []).filter((o) => o.value === "won").length;
   const lost = (outcomes ?? []).filter((o) => o.value === "lost").length;
   const winRate = won + lost > 0 ? Math.round((100 * won) / (won + lost)) : null;
-  const activeStages = ["New", "Reviewing", "Bidding", "Submitted"];
+  const activeStages = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
   const activeCards = cards.filter((c) => activeStages.includes(c.stage));
   const pipelineValue = activeCards.reduce(
     (sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null),
@@ -154,7 +154,7 @@ export default async function ReportsPage() {
     .reduce((sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null), 0);
 
   // Value & count by board stage
-  const stageOrder = ["New", "Reviewing", "Bidding", "Submitted", "Won", "Lost", "Dropped"];
+  const stageOrder = ["Identified", "Analysis", "Q&A", "Submitted", "Award", "Won", "Lost", "Dropped"];
   const byStage = stageOrder
     .map((s) => {
       const items = cards.filter((c) => c.stage === s);

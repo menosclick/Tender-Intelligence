@@ -25,7 +25,7 @@ export async function addToBoard(tenderId: number) {
   const { error } = await admin
     .from("bid_pipeline")
     .upsert(
-      { tender_id: tenderId, stage: "New" },
+      { tender_id: tenderId, stage: "Identified" },
       { onConflict: "tender_id", ignoreDuplicates: true }
     );
   if (error) throw new Error(error.message);
@@ -49,8 +49,9 @@ export async function moveCard(cardId: number, stage: BoardStage) {
   const outcomeMap: Record<string, string> = {
     Won: "won",
     Lost: "lost",
-    Bidding: "bidding",
+    "Q&A": "bidding",
     Submitted: "bidding",
+    Award: "bidding",
   };
   if (card && outcomeMap[stage]) {
     await admin.from("tender_feedback").upsert(

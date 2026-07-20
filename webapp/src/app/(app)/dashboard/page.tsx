@@ -34,7 +34,7 @@ const DUE_BUCKETS = [
 
 // Board stages (stored values) that mean "past Analysis" — these tenders get
 // their dates tracked on the deadline calendar.
-const CALENDAR_STAGES = ["Reviewing", "Bidding", "Submitted"];
+const CALENDAR_STAGES = ["Analysis", "Q&A", "Submitted", "Award"];
 
 // The anchor screen: KPIs and domain/deadline charts on top, the bid-pipeline
 // funnel, a deadline calendar for pursuits in Analysis+, then the work queue.
@@ -56,7 +56,7 @@ export default async function DashboardPage({
 
   // "New" = scraped in the last 24h (covers this morning's 09:00 run until tomorrow's).
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const activeStages = ["New", "Reviewing", "Bidding", "Submitted"];
+  const activeStages = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
   // Intake chart window: first day of the month 5 months back, in UTC.
   const nowUtc = new Date();
   const windowStart = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 5, 1));
@@ -230,7 +230,7 @@ export default async function DashboardPage({
         <Kpi label="Hot" value={kpis.hot} sub="top-priority matches" tone={kpis.hot > 0 ? "hot" : undefined} />
         <Kpi label="New today" value={kpis.fresh} sub="from this morning's scrape" tone={kpis.fresh > 0 ? "accent" : undefined} />
         <Kpi label="Closing ≤ 14d" value={kpis.closing} sub="act this sprint or drop" tone={kpis.closing > 0 ? "hot" : undefined} />
-        <Kpi label="On bid board" value={kpis.onBoard} sub="Identified → Submitted" />
+        <Kpi label="On bid board" value={kpis.onBoard} sub="Identified → Award" />
       </dl>
 
       {/* Charts */}
