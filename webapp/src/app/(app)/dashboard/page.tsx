@@ -67,7 +67,9 @@ export default async function DashboardPage({
         .order("deadline", { ascending: true }),
       admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
       admin.from("tenders_scraped").select("id").gte("scraped_at", since),
-      admin.from("tender_feedback").select("tender_id,kind,value"),
+      // Relevance only — outcomes are fetched per board card below, so neither
+      // query can drift toward PostgREST's silent 1,000-row cap.
+      admin.from("tender_feedback").select("tender_id,value").eq("kind", "relevance"),
       admin.from("bid_pipeline").select("tender_id,stage"),
       // Historical context for the intake chart — bounded to the visible
       // window so the query can never hit PostgREST's 1,000-row cap silently.
@@ -84,31 +86,33 @@ export default async function DashboardPage({
   const freshIds = new Set((fresh ?? []).map((f) => f.id));
   const fb = feedback ?? [];
   const notRelevantIds = new Set(
-    fb.filter((f) => f.kind === "relevance" && f.value === "not_relevant").map((f) => f.tender_id)
+    fb.filter((f) => f.value === "not_relevant").map((f) => f.tender_id)
   );
-  const reviewedIds = new Set(
-    fb.filter((f) => f.kind === "relevance").map((f) => f.tender_id)
-  );
-  const outcomeByTender = new Map(
-    fb.filter((f) => f.kind === "outcome").map((f) => [f.tender_id, f.value])
-  );
+  const reviewedIds = new Set(fb.map((f) => f.tender_id));
 
   // Board cards that likely need an outcome recorded: Bidding/Submitted with a
-  // deadline already past and no Won/Lost yet — the fuel the learning loop lacks.
+  // deadline already past and no final outcome yet — the fuel the learning loop lacks.
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
   const decidedCards = boardCards.filter((b) => ["Bidding", "Submitted"].includes(b.stage));
-  const { data: decidedTenders } = decidedCards.length
-    ? await admin
-        .from("tenders_scraped")
-        .select("id,naam,sluiting_datum")
-        .in("id", decidedCards.map((b) => b.tender_id))
-    : { data: [] as { id: number; naam: string | null; sluiting_datum: string | null }[] };
+  const decidedIds = decidedCards.map((b) => b.tender_id);
+  const [{ data: decidedTenders }, { data: outcomes }] = decidedIds.length
+    ? await Promise.all([
+        admin.from("tenders_scraped").select("id,naam,sluiting_datum").in("id", decidedIds),
+        admin
+          .from("tender_feedback")
+          .select("tender_id,value")
+          .eq("kind", "outcome")
+          .in("tender_id", decidedIds),
+      ])
+    : [{ data: [] as { id: number; naam: string | null; sluiting_datum: string | null }[] }, { data: [] }];
+  const outcomeByTender = new Map((outcomes ?? []).map((f) => [f.tender_id, f.value]));
   const today = new Date().toISOString().slice(0, 10);
+  // won/lost/no_bid are final; "bidding" (auto-set on stage moves) is not.
   const needsOutcome = (decidedTenders ?? []).filter(
     (t) =>
       t.sluiting_datum !== null &&
       t.sluiting_datum < today &&
-      !["won", "lost"].includes(outcomeByTender.get(t.id) ?? "")
+      !["won", "lost", "no_bid"].includes(outcomeByTender.get(t.id) ?? "")
   );
 
   // "Needs attention" — computed actions, priority order, deduped by tender.
@@ -120,15 +124,27 @@ export default async function DashboardPage({
     attention.push({ id, title: title ?? `Tender #${id}`, note, urgent });
   };
   for (const t of needsOutcome)
-    push(t.id, t.naam, "Deadline passed — record the outcome (Won / Lost)", true);
-  for (const t of openRows)
-    if (
-      (t.label === "Hot" || t.label === "Warm") &&
-      (t.days_to_deadline ?? 99) <= 14 &&
-      !t.pipeline_stage &&
-      !notRelevantIds.has(t.id)
+    push(t.id, t.naam, "Deadline passed — record the outcome (Won / Lost / No bid)", true);
+  // Within the closing group, soonest deadline first — so the cap can never
+  // drop a tender closing tomorrow in favor of one closing in two weeks.
+  const closingSoon = openRows
+    .filter(
+      (t) =>
+        (t.label === "Hot" || t.label === "Warm") &&
+        (t.days_to_deadline ?? 99) <= 14 &&
+        !t.pipeline_stage &&
+        !notRelevantIds.has(t.id)
     )
-      push(t.id, t.title, `Closing in ${t.days_to_deadline}d — decide bid or drop`, true);
+    .sort((a, b) => (a.days_to_deadline ?? 0) - (b.days_to_deadline ?? 0));
+  for (const t of closingSoon)
+    push(
+      t.id,
+      t.title,
+      t.days_to_deadline === 0
+        ? "Closing today — decide bid or drop"
+        : `Closing in ${t.days_to_deadline}d — decide bid or drop`,
+      true
+    );
   for (const t of openRows)
     if (t.label === "Hot" && freshIds.has(t.id))
       push(t.id, t.title, "New Hot from this morning's scrape — review it");
@@ -136,10 +152,11 @@ export default async function DashboardPage({
     if (t.label === "Hot" && !reviewedIds.has(t.id) && !t.pipeline_stage)
       push(t.id, t.title, "Hot but never reviewed — mark Relevant / Not relevant");
   const attentionShown = attention.slice(0, 6);
+  const attentionOverflow = attention.length - attentionShown.length;
 
-  // Next real dates, soonest first.
+  // Next real dates, soonest first — never resurfacing what was marked not relevant.
   const upcoming = [...openRows]
-    .filter((t) => t.days_to_deadline !== null)
+    .filter((t) => t.days_to_deadline !== null && !notRelevantIds.has(t.id))
     .sort((a, b) => (a.days_to_deadline ?? 0) - (b.days_to_deadline ?? 0))
     .slice(0, 6);
 
@@ -264,6 +281,11 @@ export default async function DashboardPage({
                   </p>
                 </li>
               ))}
+              {attentionOverflow > 0 && (
+                <li className="text-xs text-fg-soft">
+                  +{attentionOverflow} more need attention
+                </li>
+              )}
             </ul>
           )}
         </ChartCard>
@@ -284,7 +306,7 @@ export default async function DashboardPage({
                     className="min-w-0 flex-1 truncate text-fg hover:text-accent-fg hover:underline"
                     title={t.title ?? ""}
                   >
-                    {t.title}
+                    {t.title ?? `Tender #${t.id}`}
                   </Link>
                   <span className={`shrink-0 text-xs tabular-nums ${deadlineClass(t.days_to_deadline)}`}>
                     {(t.days_to_deadline ?? 0) > 365 ? "long-term" : `${t.days_to_deadline}d`}
@@ -306,7 +328,11 @@ export default async function DashboardPage({
           const n = boardCards.filter((b) => b.stage === s).length;
           return (
             <span key={s} className="flex items-center gap-2 text-sm">
-              {i > 0 && <span className="text-fg-soft">→</span>}
+              {i > 0 && (
+                <span className="text-fg-soft" aria-hidden="true">
+                  →
+                </span>
+              )}
               <span className={n > 0 ? "font-medium text-fg" : "text-fg-soft"}>
                 {s} <span className="tabular-nums">{n}</span>
               </span>

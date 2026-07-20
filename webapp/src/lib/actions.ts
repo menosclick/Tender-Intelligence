@@ -174,6 +174,18 @@ export async function recordFeedback(
     { onConflict: "tender_id,kind" }
   );
   if (error) throw new Error(error.message);
+
+  // Mirror of moveCard's outcome capture: a final outcome recorded here moves
+  // the board card too, so the funnel never disagrees with the feedback.
+  const finalStage: Record<string, BoardStage> = { won: "Won", lost: "Lost" };
+  if (kind === "outcome" && finalStage[value]) {
+    await admin
+      .from("bid_pipeline")
+      .update({ stage: finalStage[value] })
+      .eq("tender_id", tenderId);
+    revalidatePath("/board");
+    revalidatePath("/dashboard");
+  }
   revalidatePath(`/tender/${tenderId}`);
 }
 
