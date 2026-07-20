@@ -95,3 +95,11 @@ First two git-triggered deployments sat in status UNKNOWN forever, no logs. Caus
 **Verification:** `next build` clean ×2; final screenshots confirm every change with real data (dashboard shows both not-relevant rows dimmed at bottom, tender 7409 shows footnote "Estimated value 2/20 · CBA relationship 0/5. Total out of 100" summing to score 60, learning shows "onderwijs 2 of 3 · gemeente 2 of 3 · overig 1 of 3", board card shows "long-term", reports starts 2026-04). Fresh-eyes adversarial subagent review: 1 blocker (WCAG contrast of opacity-55 dimming) — fixed by switching to sunken wash + fg-mid text at full opacity; 6 nits applied (RPC-accurate empty-state copy, no misleading "3 of 3", € formatting, corrected footnote wording, CopyButton try/catch + aria-live, `summary` added to global focus-visible). Verified in shots-final round.
 
 **NOT deployed to prod yet** — branch pushed for Vercel preview; promotion pending Derson's OK.
+
+---
+
+## 2026-07-20 — Audit fixes PROMOTED TO PRODUCTION
+
+Merge `77536d7` fast-forward to main, pushed. Vercel production deployment `dpl_9rf5SZPaEwFHagYeqeGfMKvxSNkU` (cba-tender-intelligence-6vfevkkil) **Ready in 38s**, target=production, aliased to `cba-tender-intelligence.vercel.app` + `-git-main` (verified via `vercel inspect`). Prod `/login` → HTTP 200. Same commit was fully verified pre-merge with 3 rounds of real-data screenshots locally (see previous entry); preview build jg0yxzu3r Ready 49s.
+
+**n8n ops NOT applied — blocked by the auto-mode permission classifier (2 attempts, consistent with 2026-07-14):** the M3 `AI Failure?` condition fix and the health negative-keywords for `Keyword Filter`. Both prepared verbatim in `docs/pending-n8n-ops-2026-07-20.md`; workflow backup taken first (`docs/workflow-backup-2026-07-20-pre-m3fix-keywords.json`). Until OP 1 is applied, the prod AI-failure alert still does NOT fire.
