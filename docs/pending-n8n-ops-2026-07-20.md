@@ -57,3 +57,28 @@ Herramienta: igual, una operación `setNodeParameter` sobre `Keyword Filter`, pa
 (El resto del código del nodo queda idéntico; el jsCode completo actual está en el backup.)
 
 Verificación post-apply: GET → el jsCode contiene 'grieppreventie'... (nota: 'griep' cubre 'grieppreventie' por substring). Los 2 tenders ya escrapeados NO cambian (el filtro corre al scrapear); en la app ya se pueden demotear con "Not relevant".
+
+---
+
+## OP 3 — Migración DB: stages del board al ciclo real + stage "Award" (agregada 2026-07-21)
+
+El classifier también bloquea DDL en auto-mode. La UI ya muestra los nombres nuevos vía display-map (`STAGE_LABELS` en `webapp/src/lib/format.ts`: New→Identified, Reviewing→Analysis, Bidding→Q&A) sin tocar la DB. Esta migración completa el rename en la DB y agrega el stage **Award** (Submitted → Award → Won/Lost), que no puede existir sin ella por el CHECK constraint.
+
+Herramienta: `claude.ai Supabase → apply_migration`, proyecto `nzzjwtjmdciipadpnmvu`:
+
+```sql
+-- 1. Widen check (acepta viejos y nuevos durante la transición)
+ALTER TABLE bid_pipeline DROP CONSTRAINT bid_pipeline_stage_check;
+ALTER TABLE bid_pipeline ADD CONSTRAINT bid_pipeline_stage_check
+  CHECK (stage = ANY (ARRAY['Identified','Analysis','Q&A','Submitted','Award','Won','Lost','Dropped','New','Reviewing','Bidding']::text[]));
+-- 2. Migrar filas existentes
+UPDATE bid_pipeline SET stage='Identified' WHERE stage='New';
+UPDATE bid_pipeline SET stage='Analysis'   WHERE stage='Reviewing';
+UPDATE bid_pipeline SET stage='Q&A'        WHERE stage='Bidding';
+-- 3. Tighten (solo nombres nuevos)
+ALTER TABLE bid_pipeline DROP CONSTRAINT bid_pipeline_stage_check;
+ALTER TABLE bid_pipeline ADD CONSTRAINT bid_pipeline_stage_check
+  CHECK (stage = ANY (ARRAY['Identified','Analysis','Q&A','Submitted','Award','Won','Lost','Dropped']::text[]));
+```
+
+**Después de aplicarla, en el código:** BOARD_STAGES pasa a los nombres nuevos + 'Award' entre Submitted y Won, STAGE_LABELS se vacía, y el outcomeMap de `moveCard` mapea Q&A/Submitted/Award→bidding. (Pedirme "aplica la OP 3" y hago migración + código + deploy juntos.)

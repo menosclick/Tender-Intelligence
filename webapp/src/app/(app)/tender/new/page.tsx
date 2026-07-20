@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createManualTender } from "@/lib/actions";
-import { BOARD_STAGES } from "@/lib/format";
+import { BOARD_STAGES, stageLabel } from "@/lib/format";
 import { btnPrimary, inputCls, microLabel } from "@/lib/ui";
 
 export const dynamic = "force-dynamic";
@@ -143,7 +143,7 @@ export default function NewTenderPage() {
                 <option value="">not on board</option>
                 {BOARD_STAGES.map((s) => (
                   <option key={s} value={s}>
-                    {s}
+                    {stageLabel(s)}
                   </option>
                 ))}
               </select>

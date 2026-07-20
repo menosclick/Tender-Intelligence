@@ -134,3 +134,16 @@ export const BOARD_STAGES = [
   "Dropped",
 ] as const;
 export type BoardStage = (typeof BOARD_STAGES)[number];
+
+// The DB keeps the original stage values (CHECK constraint + the currently
+// deployed app still writes them). The UI renders the real tender-lifecycle
+// names. Storing these names — and adding the missing "Award" stage between
+// Submitted and Won — requires the pending DB migration (needs approval).
+export const STAGE_LABELS: Record<string, string> = {
+  New: "Identified",
+  Reviewing: "Analysis",
+  Bidding: "Q&A",
+};
+export function stageLabel(stage: string): string {
+  return STAGE_LABELS[stage] ?? stage;
+}

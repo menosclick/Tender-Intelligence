@@ -1,4 +1,5 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
+import { stageLabel } from "@/lib/format";
 import { PageHeader, microLabel } from "@/lib/ui";
 import { PrintButton } from "./print-button";
 
@@ -161,7 +162,7 @@ export default async function ReportsPage() {
         (sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null),
         0
       );
-      return [s, items.length, euro(value)] as (string | number)[];
+      return [stageLabel(s), items.length, euro(value)] as (string | number)[];
     })
     .filter((r) => (r[1] as number) > 0);
 

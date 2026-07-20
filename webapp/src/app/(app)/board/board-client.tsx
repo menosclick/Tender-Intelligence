@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { moveCard, updateCard, removeCard } from "@/lib/actions";
-import { BOARD_STAGES, type BoardStage } from "@/lib/format";
+import { BOARD_STAGES, stageLabel, type BoardStage } from "@/lib/format";
 import { LabelChip, btnPrimary, inputCls } from "@/lib/ui";
 
 export type BoardCard = {
@@ -62,7 +62,7 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
               }`}
             >
               <p className="flex items-center justify-between px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-fg-soft">
-                {stage}
+                {stageLabel(stage)}
                 <span className="rounded-full bg-surface px-1.5 py-0.5 font-medium tabular-nums text-fg-soft">
                   {items.length}
                 </span>
@@ -151,7 +151,7 @@ function CardEditor({ card, onDone }: { card: BoardCard; onDone: () => void }) {
       >
         {BOARD_STAGES.map((s) => (
           <option key={s} value={s}>
-            {s}
+            {stageLabel(s)}
           </option>
         ))}
       </select>

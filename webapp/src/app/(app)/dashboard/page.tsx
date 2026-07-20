@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, BOARD_STAGES } from "@/lib/format";
+import { deadlineText, deadlineClass, BOARD_STAGES, stageLabel } from "@/lib/format";
 import { LabelChip, PageHeader, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList, Columns } from "@/lib/viz";
 
@@ -255,7 +255,7 @@ export default async function DashboardPage({
         <Kpi label="Hot" value={kpis.hot} sub="top-priority matches" tone={kpis.hot > 0 ? "hot" : undefined} />
         <Kpi label="New today" value={kpis.fresh} sub="from this morning's scrape" tone={kpis.fresh > 0 ? "accent" : undefined} />
         <Kpi label="Closing ≤ 14d" value={kpis.closing} sub="act this sprint or drop" tone={kpis.closing > 0 ? "hot" : undefined} />
-        <Kpi label="On bid board" value={kpis.onBoard} sub="New → Submitted" />
+        <Kpi label="On bid board" value={kpis.onBoard} sub="Identified → Submitted" />
       </dl>
 
       {/* Cockpit panels: what needs a decision, and what's coming */}
@@ -334,7 +334,7 @@ export default async function DashboardPage({
                 </span>
               )}
               <span className={n > 0 ? "font-medium text-fg" : "text-fg-soft"}>
-                {s} <span className="tabular-nums">{n}</span>
+                {stageLabel(s)} <span className="tabular-nums">{n}</span>
               </span>
             </span>
           );
@@ -449,7 +449,7 @@ export default async function DashboardPage({
                   {deadlineText(t.deadline, t.days_to_deadline)}
                 </td>
                 <td className="px-4 py-3 text-xs text-fg-soft">
-                  {t.pipeline_stage ?? "—"}
+                  {t.pipeline_stage ? stageLabel(t.pipeline_stage) : "—"}
                 </td>
               </tr>
             ))}
