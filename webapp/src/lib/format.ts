@@ -36,22 +36,61 @@ export function labelDot(label: string | null) {
   return LABEL_DOT[label ?? ""] ?? "bg-fg-soft";
 }
 
-// Real names + maxima for score_breakdown d1..d7 (from scoring_rules.json).
-// d2 and d7 are listed apart: TenderNed publishes no contract value and no
-// relationship data exists yet, so they can't meaningfully score (audit
-// 2026-07-20: d7 = 0 on every row ever, d2 ≤ 2/20). Rendering them as bars
-// erodes trust in the score; they show as a footnote instead.
-export const SCORE_DIMENSIONS: { key: string; label: string; max: number }[] = [
-  { key: "d1", label: "Product fit (ManageEngine)", max: 30 },
-  { key: "d3", label: "Procedure type", max: 15 },
-  { key: "d4", label: "Authority type", max: 15 },
-  { key: "d5", label: "Deadline runway", max: 10 },
-  { key: "d6", label: "Recency", max: 5 },
+// Real names, maxima and plain-language meaning for score_breakdown d1..d7
+// (semantics from scoring/scoring_rules.json). d2 and d7 are listed apart:
+// TenderNed publishes no contract value and no relationship data exists yet,
+// so they can't meaningfully score (audit 2026-07-20: d7 = 0 on every row
+// ever, d2 ≤ 2/20). Rendering them as bars erodes trust in the score.
+export const SCORE_DIMENSIONS: {
+  key: string;
+  label: string;
+  max: number;
+  desc: string;
+}[] = [
+  {
+    key: "d1",
+    label: "Product fit",
+    max: 30,
+    desc: "How clearly the tender maps to ManageEngine products",
+  },
+  {
+    key: "d3",
+    label: "Procedure type",
+    max: 15,
+    desc: "Points for the kind of procurement procedure the buyer runs",
+  },
+  {
+    key: "d4",
+    label: "Authority type",
+    max: 15,
+    desc: "Strategic value of this type of buyer for CBA",
+  },
+  {
+    key: "d5",
+    label: "Deadline runway",
+    max: 10,
+    desc: "Time left until the submission deadline — longer means a serious bid is feasible",
+  },
+  {
+    key: "d6",
+    label: "Recency",
+    max: 5,
+    desc: "How early the system caught it after publication",
+  },
 ];
-export const SCORE_DIMENSIONS_SPARSE: { key: string; label: string; max: number }[] = [
-  { key: "d2", label: "Estimated value", max: 20 },
-  { key: "d7", label: "CBA relationship", max: 5 },
+export const SCORE_DIMENSIONS_SPARSE: { key: string; label: string; max: number; reason: string }[] = [
+  { key: "d2", label: "Estimated value", max: 20, reason: "TenderNed rarely publishes contract values" },
+  { key: "d7", label: "CBA relationship", max: 5, reason: "no relationship data recorded yet" },
 ];
+
+// Qualitative reading of a dimension's contribution, so the number explains itself.
+export function scoreTier(val: number, max: number): string {
+  if (val <= 0) return "none";
+  const r = val / max;
+  if (r >= 0.8) return "strong";
+  if (r >= 0.5) return "moderate";
+  return "weak";
+}
 
 export function deadlineText(deadline: string | null, days: number | null) {
   if (!deadline) return "—";

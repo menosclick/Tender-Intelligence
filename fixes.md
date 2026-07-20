@@ -103,3 +103,17 @@ First two git-triggered deployments sat in status UNKNOWN forever, no logs. Caus
 Merge `77536d7` fast-forward to main, pushed. Vercel production deployment `dpl_9rf5SZPaEwFHagYeqeGfMKvxSNkU` (cba-tender-intelligence-6vfevkkil) **Ready in 38s**, target=production, aliased to `cba-tender-intelligence.vercel.app` + `-git-main` (verified via `vercel inspect`). Prod `/login` → HTTP 200. Same commit was fully verified pre-merge with 3 rounds of real-data screenshots locally (see previous entry); preview build jg0yxzu3r Ready 49s.
 
 **n8n ops NOT applied — blocked by the auto-mode permission classifier (2 attempts, consistent with 2026-07-14):** the M3 `AI Failure?` condition fix and the health negative-keywords for `Keyword Filter`. Both prepared verbatim in `docs/pending-n8n-ops-2026-07-20.md`; workflow backup taken first (`docs/workflow-backup-2026-07-20-pre-m3fix-keywords.json`). Until OP 1 is applied, the prod AI-failure alert still does NOT fire.
+
+---
+
+## 2026-07-20 (2) — Dashboard redesign + "Why this score" (branch design/dashboard-2026-07-20)
+
+**Derson's feedback on the audit round:** breakdown still unclear, outreach draft unnecessary, dashboard "no es un dashboard" (reference: BI-style Excel dashboard — KPIs, charts, filters).
+
+**Shipped:** (1) Dashboard rebuilt: 5-KPI row (Open/Hot/New today/Closing ≤14d/On board), filter bar (label/buyer type/deadline — sanitized params, legacy `?show=all` mapped), 3 charts (by deadline with zero-buckets visible, by buyer type, qualified intake by month — query bounded to the 6-month window so PostgREST's 1,000-row cap can't silently undercount), work queue below with the not-relevant demotion intact. New `lib/viz.tsx` (Kpi/ChartCard/HBarList/Columns), hand-rolled with design tokens, no chart lib. (2) Tender detail: "Why this score · N/100" moved above Executive summary — strongest/weakest sentence, per-dimension bar + qualitative tier + plain-language meaning, d2/d7 footnote. (3) Outreach draft + CopyButton removed (explicit request).
+
+**Fresh-eyes adversarial review: 3 blockers, all fixed:** unbounded qualifiedAll query (→ windowed), invalid `<dl>` structure in KPI row (→ proper dt/dd), and dimension descriptions contradicted by live data — tender 7409 shows d3=15/15 on a "Niet-openbaar" procedure while scoring_rules.json says niet-openbaar=12/mini-competitie=6 (→ descriptions softened to what each dimension measures, no mechanical claims). Nits applied: searchParams whitelist, zero-bucket visibility, all-zero intake → empty state, degenerate strongest/weakest guard, UTC month keys, "unknown" not "onbekend", max-w-5xl per DESIGN.md, text-xs floor, fg-mid for descriptions/tiers.
+
+**⚠️ PIPELINE FINDING (not fixed here):** live n8n `Score Tender` gives d3=15 to a niet-openbaar/mini-competition tender — diverges from scoring/scoring_rules.json (12/6). Also labels: rules say Hot ≥70 but prod labels Hot at 50-60. The repo JSON and the live scoring node have drifted; needs a dedicated session to reconcile.
+
+**Verification:** `next build` clean ×3; screenshots with real data in `docs/redesign-shots-2026-07-20/` (dashboard shows KPI row + 3 charts + demoted not-relevant rows; tender 7409 shows the new Why-this-score section). NOT in prod — branch pushed for preview, promotion pending Derson's OK.

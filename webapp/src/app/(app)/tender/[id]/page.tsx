@@ -6,12 +6,12 @@ import {
   deadlineClass,
   SCORE_DIMENSIONS,
   SCORE_DIMENSIONS_SPARSE,
+  scoreTier,
   asArray,
 } from "@/lib/format";
 import { LabelChip, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard } from "@/lib/actions";
 import { FeedbackWidget } from "./feedback";
-import { CopyButton } from "./copy-button";
 
 export const dynamic = "force-dynamic";
 
@@ -330,6 +330,65 @@ export default async function TenderDetailPage({
       )}
 
       <div className="mt-8 space-y-7">
+        {Object.keys(breakdown).length > 0 && (
+          <Section title={`Why this score${t.score != null ? ` · ${t.score}/100` : ""}`}>
+            {(() => {
+              const scored = SCORE_DIMENSIONS.map((d) => ({
+                ...d,
+                val: breakdown[d.key] ?? 0,
+              }));
+              const best = [...scored].sort(
+                (a, b) => b.val / b.max - a.val / a.max
+              )[0];
+              const worst = [...scored].sort(
+                (a, b) => a.val / a.max - b.val / b.max
+              )[0];
+              return (
+                <>
+                  {best.val > 0 && best.key !== worst.key && (
+                    <p className="text-sm leading-relaxed text-fg-mid">
+                      Strongest signal:{" "}
+                      <strong className="text-fg">{best.label.toLowerCase()}</strong> ({best.val}/
+                      {best.max}) · weakest:{" "}
+                      <strong className="text-fg">{worst.label.toLowerCase()}</strong> ({worst.val}/
+                      {worst.max}).
+                    </p>
+                  )}
+                  <div className="mt-4 space-y-3.5">
+                    {scored.map((d) => (
+                      <div key={d.key} className="text-sm">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="font-medium text-fg">{d.label}</span>
+                          <span className="shrink-0 tabular-nums text-fg-mid">
+                            {d.val}/{d.max}
+                            <span className="ml-2 text-xs uppercase tracking-wider text-fg-mid">
+                              {scoreTier(d.val, d.max)}
+                            </span>
+                          </span>
+                        </div>
+                        <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-sunken">
+                          <div
+                            className="h-full rounded-full bg-accent"
+                            style={{ width: `${Math.min(100, (d.val / d.max) * 100)}%` }}
+                          />
+                        </div>
+                        <p className="mt-1 text-xs leading-relaxed text-fg-mid">{d.desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="mt-3.5 text-xs leading-relaxed text-fg-soft">
+                    Not scored here:{" "}
+                    {SCORE_DIMENSIONS_SPARSE.map(
+                      (d) => `${d.label} ${breakdown[d.key] ?? 0}/${d.max} (${d.reason})`
+                    ).join(" · ")}
+                    . All seven dimensions add up to 100.
+                  </p>
+                </>
+              );
+            })()}
+          </Section>
+        )}
+
         {t.executive_summary && (
           <Section title="Executive summary">
             <p className="text-sm leading-relaxed text-fg">{t.executive_summary}</p>
@@ -403,21 +462,6 @@ export default async function TenderDetailPage({
                 <strong className="text-fg">First action:</strong>{" "}
                 {t.route_first_action}
               </p>
-            )}
-            {t.reseller_outreach_draft && (
-              <details className="mt-3 rounded-lg border border-line bg-surface">
-                <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium text-accent-fg">
-                  Outreach draft{t.reseller_name ? ` for ${t.reseller_name}` : ""} · generated
-                </summary>
-                <div className="border-t border-line px-4 py-3">
-                  <p className="whitespace-pre-wrap text-sm leading-relaxed text-fg-mid">
-                    {t.reseller_outreach_draft}
-                  </p>
-                  <div className="mt-3">
-                    <CopyButton text={t.reseller_outreach_draft} />
-                  </div>
-                </div>
-              </details>
             )}
           </Section>
         )}
@@ -504,38 +548,6 @@ export default async function TenderDetailPage({
               )}
             </div>
           </div>
-        )}
-
-        {Object.keys(breakdown).length > 0 && (
-          <Section title="Score breakdown">
-            <div className="space-y-2.5">
-              {SCORE_DIMENSIONS.map((d) => {
-                const val = breakdown[d.key] ?? 0;
-                return (
-                  <div key={d.key} className="flex items-center gap-3 text-sm">
-                    <span className="w-52 shrink-0 text-fg-mid">{d.label}</span>
-                    <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
-                      <div
-                        className="h-full rounded-full bg-accent"
-                        style={{ width: `${Math.min(100, (val / d.max) * 100)}%` }}
-                      />
-                    </div>
-                    <span className="w-12 shrink-0 text-right tabular-nums text-fg-mid">
-                      {val}/{d.max}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-            <p className="mt-3 text-xs leading-relaxed text-fg-soft">
-              Rarely scoreable (TenderNed publishes no contract value; no
-              relationship data yet):{" "}
-              {SCORE_DIMENSIONS_SPARSE.map(
-                (d) => `${d.label} ${breakdown[d.key] ?? 0}/${d.max}`
-              ).join(" · ")}
-              . Total out of 100.
-            </p>
-          </Section>
         )}
 
         {raw?.beschrijving && (
