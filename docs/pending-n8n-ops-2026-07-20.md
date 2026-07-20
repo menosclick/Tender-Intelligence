@@ -82,3 +82,31 @@ ALTER TABLE bid_pipeline ADD CONSTRAINT bid_pipeline_stage_check
 ```
 
 **Después de aplicarla, en el código:** BOARD_STAGES pasa a los nombres nuevos + 'Award' entre Submitted y Won, STAGE_LABELS se vacía, y el outcomeMap de `moveCard` mapea Q&A/Submitted/Award→bidding. (Pedirme "aplica la OP 3" y hago migración + código + deploy juntos.)
+
+---
+
+## OP 4 — Tabla `tender_milestones` para el Deadline Calendar (agregada 2026-07-21)
+
+El Deadline Calendar del dashboard (pedido de Derson) hoy solo puede mostrar los hitos que existen en la DB: submission deadline (y question deadline cuando venga). Los otros 8 hitos del ciclo (NvI publication, Demo, Proof of Concept, Provisional award, Objection period, Final award, Contract start, Publication) viven en la leidraad de cada tender. Esta tabla los habilita — carga manual primero, extracción automática desde los documentos (pipeline bid-pack ya los lee) después.
+
+```sql
+CREATE TABLE tender_milestones (
+  id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  tender_id integer NOT NULL REFERENCES tenders_scraped(id) ON DELETE CASCADE,
+  kind text NOT NULL CHECK (kind IN (
+    'publication','question_deadline','nvi_publication','submission_deadline',
+    'demo','proof_of_concept','provisional_award','objection_period_end',
+    'final_award','contract_start','other'
+  )),
+  milestone_date date NOT NULL,
+  note text,
+  source text NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','documents','tenderned')),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (tender_id, kind)
+);
+ALTER TABLE tender_milestones ENABLE ROW LEVEL SECURITY;
+-- misma política que las demás tablas app-owned (service role escribe; authenticated lee)
+CREATE POLICY tender_milestones_read ON tender_milestones FOR SELECT TO authenticated USING (true);
+```
+
+**Después de aplicarla, en el código:** el DeadlineCalendar del dashboard lee `tender_milestones` (unión con los hitos de tenders_scraped), y el tender detail gana un mini-form "Add milestone" (kind + fecha). Fase 2 (pipeline): extraer la tabla de planning de la leidraad en el paso de bid pack y escribir los hitos con source='documents'. (Pedirme "aplica la OP 4".)

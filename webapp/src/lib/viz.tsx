@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { microLabel } from "./ui";
 
 // Small server-rendered visualization primitives for the dashboard.
@@ -71,6 +72,79 @@ export function HBarList({
             />
           </div>
           <span className="w-8 shrink-0 text-right tabular-nums text-fg">{r.count}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Horizontal timeline of milestones per tender over the next `horizonDays`.
+// Milestone kinds are open-ended: today the pipeline only knows publication,
+// question deadline and submission deadline; the rest of the tender lifecycle
+// (NvI, demo, PoC, award, standstill, contract start) plugs in via
+// tender_milestones once that table exists.
+export type CalendarItem = {
+  id: number;
+  title: string;
+  milestones: { label: string; date: string; days: number; hot?: boolean }[];
+};
+
+export function DeadlineCalendar({
+  items,
+  horizonDays = 60,
+  emptyText = "Move a tender into Analysis to track its dates here.",
+}: {
+  items: CalendarItem[];
+  horizonDays?: number;
+  emptyText?: string;
+}) {
+  if (items.length === 0)
+    return <p className="py-4 text-center text-xs text-fg-soft">{emptyText}</p>;
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between pl-[13.5rem] text-xs text-fg-soft">
+        <span>today</span>
+        <span>+{Math.round(horizonDays / 2)}d</span>
+        <span>+{horizonDays}d</span>
+      </div>
+      {items.map((t) => (
+        <div key={t.id} className="flex items-center gap-3">
+          <Link
+            href={`/tender/${t.id}`}
+            className="w-[13rem] shrink-0 truncate text-sm font-medium text-fg hover:text-accent-fg hover:underline"
+            title={t.title}
+          >
+            {t.title}
+          </Link>
+          <div className="relative h-7 flex-1 rounded-md bg-sunken">
+            {/* halfway gridline */}
+            <div className="absolute inset-y-0 left-1/2 w-px bg-line" aria-hidden="true" />
+            {t.milestones.map((m, i) => {
+              const clamped = Math.min(m.days, horizonDays);
+              const pct = Math.max(0, (clamped / horizonDays) * 100);
+              const nearRight = pct > 72;
+              return (
+                <div
+                  key={i}
+                  className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1.5"
+                  style={
+                    nearRight
+                      ? { right: `${100 - pct}%`, flexDirection: "row-reverse" }
+                      : { left: `${pct}%` }
+                  }
+                  title={`${m.label}: ${m.date}`}
+                >
+                  <span
+                    className={`h-2.5 w-2.5 shrink-0 rounded-full ${m.hot ? "bg-hot" : "bg-accent"}`}
+                  />
+                  <span className="whitespace-nowrap text-xs text-fg-mid">
+                    {m.label} {m.date.slice(5)}
+                    {m.days > horizonDays ? ` (+${m.days}d)` : ""}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ))}
     </div>
