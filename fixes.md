@@ -128,3 +128,20 @@ Merge `77536d7` fast-forward to main, pushed. Vercel production deployment `dpl_
 1. `tender_milestones_for_deadline_calendar` (OP 4) — table + RLS + read policy created, `{"success":true}`.
 2. `bid_pipeline_stages_tender_lifecycle` (OP 3) — stages renamed in DB (New→Identified, Reviewing→Analysis, Bidding→Q&A), **Award** stage added, constraint tightened to the 8 lifecycle values, `{"success":true}`.
 Coordinated code deploy: BOARD_STAGES → lifecycle names + Award column, outcomeMap Q&A/Submitted/Award→bidding, activeStages/stageOrder/CALENDAR_STAGES updated, STAGE_LABELS kept as legacy display shim. Verified with real-data screenshots (shots-v9): board shows Identified 1 / Analysis 1 / Q&A 0 / Submitted 3 / Award, all 5 cards render.
+
+---
+
+## 2026-07-21 (2) — Milestone entry VERIFIED + 3 review blockers fixed (branch feature/milestones-2026-07-21)
+
+The morning commit 9991d2a (Key dates section on tender detail feeding the dashboard calendar) was built but never verified — treated as hypothesis and verified from scratch.
+
+**E2E round 1 (16/16 PASS, real login, throwaway user, tender 6169):** empty state → add Demo → re-add corrects date without duplicating (upsert proven) → "other" labeled by its note on the calendar → extracted row (source=documents, SQL-seeded) shows "from documents" chip with NO Remove → re-adding the kind flips it to manual+removable → all rows removed via UI → calendar back to TenderNed-only. Two visual bugs found in the screenshots: manual milestone label collided with the clamped Submission label, and the 2034 DAS tender rendered "Submission (+2896d)" on the calendar (live in prod since v3). Fixed in 1b4abb0.
+
+**Fresh-eyes adversarial review: 3 BLOCKERS, all real, all outside the paths round 1 exercised:**
+1. Calendar derived from the `.gte(days_to_deadline, 0)` query — Submitted/Award tenders vanished from the calendar the day their deadline passed, exactly when demo/award/objection dates matter. Fix: calendar tenders come from board stage (not-relevant still excluded), fetched by id with no deadline filter.
+2. Index-parity lanes only separated adjacent labels; several beyond-horizon milestones clamped onto the identical right anchor (total superposition). Fix: greedy lane assignment by estimated label width + all beyond-horizon milestones collapse into one "+N more" marker (title attr lists them).
+3. The add form offered Submission/Questions-close while the calendar (correctly) keeps TenderNed authoritative — a manual "correction" silently never took effect. Fix: MANUAL_MILESTONE_KINDS excludes TenderNed-owned kinds in form + server action; explainer says they're tracked automatically. Plus server-side validation: real calendar dates only (rejects Feb 31, years outside 2000-2100), note clipped to 120.
+
+**E2E round 2 (16/16 PASS):** milestone on tender 6760 (Submitted, deadline passed 2026-06-23) NOW APPEARS on the calendar; 4-milestone cluster renders with ZERO pairwise label overlaps (getBoundingClientRect assertion); "+1 more" collapse and "(long-term)" verified; form offers no TenderNed-owned kinds; all test rows removed via UI. Reviewer re-verified the fix diff: explicit SIGN-OFF, no regressions.
+
+**State:** `next build` clean ×3 · tender_milestones residue 0 (query) · both throwaway users deleted (admin API 404) · shots in `docs/milestone-shots-2026-07-21/` (12) · branch pushed, Vercel preview dpl_4jpuJ4hHRFooZvKMyAQTunQwefwD Ready, /login 200. NOT in prod — promotion pending Derson's OK.
