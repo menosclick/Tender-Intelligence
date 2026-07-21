@@ -163,3 +163,9 @@ Per Derson''s written spec: nav restructure (8 items, Bid Board → Tender Pipel
 **Fresh-eyes review: 0 blockers, 10 nits** — 4 fixed now (dl content model on linked KPIs, Active Pipeline exclusion-list, "qualified" copy mismatch, mobile header sign-out/health), 6 documented for next iteration (query caps vs PostgREST 1000-row silent truncation, NUTS view instead of raw_json fetch, KPI↔calendar population question, not-relevant pipeline-tender consistency, Columns dead code, evidence-hygiene process note).
 
 **Validation:** tsc exit 0 · next build clean · 48 prod E2E checks + 5 dev checks with real login (desktop 1440 + mobile 390), Search/Reports/Learning/Pipeline verified intact · zero test residue (throwaway users deleted, 404-verified ×2) · shots in docs/command-center-shots-2026-07-21/. No ESLint config and no test suite exist in the repo (reported as-is). Preview gkv0jia5z Ready, /login 200. NOT in prod — promotion pending Derson''s OK.
+
+---
+
+## 2026-07-21 (5) — Command Center PROMOTED TO PRODUCTION (Derson: "aprobado")
+
+Main fast-forwarded 02ad657 → 36751fb, pushed. Vercel production deployment `dpl_DjfjCTx7XYUH2dRuARSAhxhktP1z` **Ready**, aliased to `cba-tender-intelligence.vercel.app`. Prod `/login` → HTTP 200; `/inbox` unauthenticated → 307 to login (middleware covers the new routes). Same commit verified pre-merge: 48 prod + 5 dev E2E checks, fresh-eyes review 0 blockers (see previous entry).
