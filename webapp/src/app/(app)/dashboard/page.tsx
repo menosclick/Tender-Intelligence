@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, BOARD_STAGES, stageLabel, asArray } from "@/lib/format";
+import {
+  deadlineText,
+  deadlineClass,
+  daysUntil,
+  milestoneLabel,
+  BOARD_STAGES,
+  stageLabel,
+  asArray,
+} from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList, Columns, DeadlineCalendar, type CalendarItem } from "@/lib/viz";
@@ -98,13 +106,32 @@ export default async function DashboardPage({
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
 
   // Keyword provenance + question deadline live on the base table (small .in()).
-  const { data: extras } = openRows.length
-    ? await admin
-        .from("tenders_scraped")
-        .select("id,keyword_matches,deadline_vragen")
-        .in("id", openRows.map((t) => t.id))
-    : { data: [] as { id: number; keyword_matches: string[] | null; deadline_vragen: string | null }[] };
+  // Milestones only matter for the calendar, so that query is scoped to the
+  // tenders in a calendar stage.
+  const calendarIds = openRows
+    .filter((t) => t.pipeline_stage && CALENDAR_STAGES.includes(t.pipeline_stage))
+    .map((t) => t.id);
+  const [{ data: extras }, { data: msRows }] = await Promise.all([
+    openRows.length
+      ? admin
+          .from("tenders_scraped")
+          .select("id,keyword_matches,deadline_vragen")
+          .in("id", openRows.map((t) => t.id))
+      : { data: [] as { id: number; keyword_matches: string[] | null; deadline_vragen: string | null }[] },
+    calendarIds.length
+      ? admin
+          .from("tender_milestones")
+          .select("tender_id,kind,milestone_date,note")
+          .in("tender_id", calendarIds)
+      : { data: [] as { tender_id: number; kind: string; milestone_date: string; note: string | null }[] },
+  ]);
   const extrasById = new Map((extras ?? []).map((e) => [e.id, e]));
+  const msByTender = new Map<number, { kind: string; milestone_date: string; note: string | null }[]>();
+  for (const m of msRows ?? []) {
+    const list = msByTender.get(m.tender_id) ?? [];
+    list.push(m);
+    msByTender.set(m.tender_id, list);
+  }
 
   const kpis = {
     open: openRows.length,
@@ -171,27 +198,48 @@ export default async function DashboardPage({
   const firstActive = months.findIndex((m) => m.value > 0);
   const intake = firstActive === -1 ? [] : months.slice(firstActive);
 
-  // Deadline calendar: every tender in Analysis or beyond, with the milestones
-  // the pipeline knows today (question deadline, submission). The rest of the
-  // lifecycle (NvI, demo, PoC, award, standstill, contract start) plugs in via
-  // the pending tender_milestones migration.
+  // Deadline calendar: every tender in Analysis or beyond. TenderNed's own
+  // dates (question deadline, submission) come from the scraped row and stay
+  // authoritative; tender_milestones fills in the rest of the lifecycle
+  // (NvI, demo, PoC, award, contract start) entered on the tender detail page.
   const calendarItems: CalendarItem[] = openRows
     .filter((t) => t.pipeline_stage && CALENDAR_STAGES.includes(t.pipeline_stage))
     .map((t) => {
-      const milestones: CalendarItem["milestones"] = [];
+      const byKind = new Map<string, CalendarItem["milestones"][number]>();
       const vragen = extrasById.get(t.id)?.deadline_vragen ?? "";
       const vragenDate = /^\d{4}-\d{2}-\d{2}/.exec(vragen.trim())?.[0];
       if (vragenDate) {
-        const days = Math.round((Date.parse(vragenDate) - Date.now()) / 86400000);
-        if (days >= 0) milestones.push({ label: "Questions", date: vragenDate, days });
+        const days = daysUntil(vragenDate);
+        if (days !== null && days >= 0)
+          byKind.set("question_deadline", {
+            label: milestoneLabel("question_deadline"),
+            date: vragenDate,
+            days,
+          });
       }
       if (t.deadline && t.days_to_deadline !== null && t.days_to_deadline >= 0)
-        milestones.push({
-          label: "Submission",
+        byKind.set("submission_deadline", {
+          label: milestoneLabel("submission_deadline"),
           date: t.deadline,
           days: t.days_to_deadline,
           hot: true,
         });
+      for (const m of msByTender.get(t.id) ?? []) {
+        if (byKind.has(m.kind)) continue;
+        const days = daysUntil(m.milestone_date);
+        if (days === null || days < 0) continue;
+        byKind.set(m.kind, {
+          // "Other" says nothing on a timeline — the note is the label there.
+          label:
+            m.kind === "other" && m.note
+              ? m.note.slice(0, 28)
+              : milestoneLabel(m.kind),
+          date: m.milestone_date,
+          days,
+          hot: m.kind === "submission_deadline",
+        });
+      }
+      const milestones = [...byKind.values()].sort((a, b) => a.days - b.days);
       return { id: t.id, title: t.title ?? `Tender #${t.id}`, milestones };
     })
     .filter((t) => t.milestones.length > 0)

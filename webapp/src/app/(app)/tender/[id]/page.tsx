@@ -13,6 +13,7 @@ import {
 import { LabelChip, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard } from "@/lib/actions";
 import { FeedbackWidget } from "./feedback";
+import { MilestonesSection, type MilestoneRow } from "./milestones";
 
 export const dynamic = "force-dynamic";
 
@@ -85,7 +86,7 @@ export default async function TenderDetailPage({
   if (!Number.isInteger(tenderId)) notFound();
 
   const admin = createSupabaseAdmin();
-  const [{ data: t }, { data: raw }, { data: fb }, { data: bidPack }, { data: verdict }] =
+  const [{ data: t }, { data: raw }, { data: fb }, { data: bidPack }, { data: verdict }, { data: milestones }] =
     await Promise.all([
       admin.from("v_app_tenders").select("*").eq("id", tenderId).maybeSingle(),
       // description, value and filter provenance live on the base table (read-only)
@@ -105,6 +106,10 @@ export default async function TenderDetailPage({
         .select("*")
         .eq("tender_id", tenderId)
         .maybeSingle(),
+      admin
+        .from("tender_milestones")
+        .select("id,kind,milestone_date,note,source")
+        .eq("tender_id", tenderId),
     ]);
   if (!t) notFound();
 
@@ -331,6 +336,11 @@ export default async function TenderDetailPage({
       )}
 
       <div className="mt-8 space-y-7">
+        <MilestonesSection
+          tenderId={tenderId}
+          milestones={(milestones ?? []) as MilestoneRow[]}
+        />
+
         {Object.keys(breakdown).length > 0 && (
           <Section title={`Why this score${t.score != null ? ` · ${t.score}/100` : ""}`}>
             {(() => {

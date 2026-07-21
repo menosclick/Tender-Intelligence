@@ -79,10 +79,10 @@ export function HBarList({
 }
 
 // Horizontal timeline of milestones per tender over the next `horizonDays`.
-// Milestone kinds are open-ended: today the pipeline only knows publication,
-// question deadline and submission deadline; the rest of the tender lifecycle
-// (NvI, demo, PoC, award, standstill, contract start) plugs in via
-// tender_milestones once that table exists.
+// Milestone kinds are open-ended: question and submission deadlines come from
+// the scraped TenderNed row; the rest of the tender lifecycle (NvI, demo, PoC,
+// award, contract start) comes from tender_milestones, entered on the tender
+// detail page.
 export type CalendarItem = {
   id: number;
   title: string;

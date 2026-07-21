@@ -124,6 +124,27 @@ export function asArray(v: unknown): string[] {
   return [];
 }
 
+// Milestone kinds, in lifecycle order — mirrors the tender_milestones CHECK
+// constraint (migration tender_milestones_for_deadline_calendar, 2026-07-21).
+// `label` is the display name on the detail page and the dashboard calendar.
+export const MILESTONE_KINDS: { key: string; label: string }[] = [
+  { key: "publication", label: "Publication" },
+  { key: "question_deadline", label: "Questions close" },
+  { key: "nvi_publication", label: "NvI published" },
+  { key: "submission_deadline", label: "Submission" },
+  { key: "demo", label: "Demo" },
+  { key: "proof_of_concept", label: "Proof of concept" },
+  { key: "provisional_award", label: "Provisional award" },
+  { key: "objection_period_end", label: "Objection period ends" },
+  { key: "final_award", label: "Final award" },
+  { key: "contract_start", label: "Contract start" },
+  { key: "other", label: "Other" },
+];
+
+export function milestoneLabel(kind: string): string {
+  return MILESTONE_KINDS.find((k) => k.key === kind)?.label ?? kind;
+}
+
 // The real tender lifecycle (DB migration bid_pipeline_stages_tender_lifecycle,
 // approved 2026-07-21): working stages Identified → Analysis → Q&A → Submitted
 // → Award, terminals Won / Lost / Dropped.
