@@ -181,7 +181,16 @@ export default async function DashboardPage() {
     })
     .slice(0, 5);
 
-  const upcoming = events.slice(0, 5);
+  // One row per tender — its next date plus a "+N more" pointer. Listing every
+  // milestone made the same tender repeat, which read as duplicate entries
+  // (Derson, 2026-07-21); the full per-date list lives on the Calendar page.
+  const byTenderNext = new Map<number, { e: (typeof events)[number]; more: number }>();
+  for (const e of events) {
+    const cur = byTenderNext.get(e.tenderId);
+    if (cur) cur.more += 1;
+    else byTenderNext.set(e.tenderId, { e, more: 0 });
+  }
+  const upcoming = [...byTenderNext.values()].slice(0, 5);
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -400,8 +409,8 @@ export default async function DashboardPage() {
           <div className="mt-2.5 rounded-xl border border-line bg-surface">
             {upcoming.length > 0 ? (
               <ul className="divide-y divide-line/60">
-                {upcoming.map((e, i) => (
-                  <li key={`${e.tenderId}-${e.label}-${i}`} className="px-4 py-3">
+                {upcoming.map(({ e, more }) => (
+                  <li key={e.tenderId} className="px-4 py-3">
                     <div className="flex items-baseline justify-between gap-2">
                       <span className={`tabular-nums text-sm ${deadlineClass(e.days)}`}>
                         {e.date}
@@ -427,6 +436,14 @@ export default async function DashboardPage() {
                       >
                         {e.official ? "Official" : "Internal"}
                       </span>
+                      {more > 0 && (
+                        <Link
+                          href="/calendar"
+                          className="font-medium text-accent-fg hover:underline"
+                        >
+                          +{more} more {more === 1 ? "date" : "dates"} →
+                        </Link>
+                      )}
                     </p>
                   </li>
                 ))}
