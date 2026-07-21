@@ -104,8 +104,8 @@ export function NetherlandsMap({
   if (regional === 0 && nationalCount === 0 && otherRegions.length === 0) {
     return (
       <p className="py-6 text-center text-xs text-fg-soft">
-        No open qualified tenders with location data right now. Tenders appear
-        here as TenderNed publishes their NUTS region.
+        No open tenders with location data right now. Tenders appear here as
+        TenderNed publishes their NUTS region.
       </p>
     );
   }
@@ -117,7 +117,7 @@ export function NetherlandsMap({
           viewBox={`0 0 ${width} ${height}`}
           className="mx-auto block w-full max-w-72"
           role="img"
-          aria-label={`Schematic map of the Netherlands: ${regional} open qualified tender${regional === 1 ? "" : "s"} with a published region`}
+          aria-label={`Schematic map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region`}
         >
           {Object.entries(TILE).map(([province, t]) => {
             const tenders = byProvince.get(province) ?? [];
@@ -170,7 +170,7 @@ export function NetherlandsMap({
         </svg>
       ) : (
         <p className="py-4 text-center text-xs text-fg-soft">
-          No open qualified tenders name a specific region right now.
+          No open tenders name a specific region right now.
         </p>
       )}
 

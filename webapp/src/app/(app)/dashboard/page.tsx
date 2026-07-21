@@ -65,7 +65,10 @@ export default async function DashboardPage() {
   const openRows = ((open ?? []) as Row[]).filter((t) => !notRelevantIds.has(t.id));
   const qualified = openRows.filter((t) => t.label === "Hot" || t.label === "Warm");
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
-  const activePipeline = boardCards.filter((b) => ACTIVE_STAGES.includes(b.stage));
+  // Exclusion form: a stray legacy stage value must count as active, not vanish.
+  const activePipeline = boardCards.filter(
+    (b) => !["Won", "Lost", "Dropped"].includes(b.stage)
+  );
 
   // Deadlines in 30 days: official deadlines of open qualified tenders plus
   // tracked milestones of pipeline tenders, deduped per tender+date.

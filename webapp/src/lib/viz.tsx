@@ -32,14 +32,17 @@ export function Kpi({
       {sub && <dd className="mt-0.5 text-xs text-fg-soft">{sub}</dd>}
     </>
   );
+  // <dl> only permits dt/dd/div children — the link must live inside a div.
   if (href)
     return (
-      <Link
-        href={href}
-        className="flex-1 px-5 py-4 transition-colors duration-150 hover:bg-sunken/60"
-      >
-        {inner}
-      </Link>
+      <div className="flex-1">
+        <Link
+          href={href}
+          className="block h-full px-5 py-4 transition-colors duration-150 hover:bg-sunken/60"
+        >
+          {inner}
+        </Link>
+      </div>
     );
   return <div className="flex-1 px-5 py-4">{inner}</div>;
 }

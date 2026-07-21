@@ -66,6 +66,20 @@ export default async function AppLayout({
         <div className="flex items-center gap-2.5 px-4 pb-2 pt-3">
           <BrandMark />
           <p className="text-sm font-semibold text-rail-fg">Tender Intelligence</p>
+          <div className="ml-auto flex items-center gap-3">
+            <span className="flex items-center gap-1.5 text-xs text-rail-fg-soft">
+              <span className={`h-1.5 w-1.5 rounded-full ${dotClass}`} aria-hidden="true" />
+              {lastScrape}
+            </span>
+            <form action="/auth/signout" method="post">
+              <button
+                title={user?.email ?? ""}
+                className="text-xs text-rail-fg-soft underline decoration-rail-line underline-offset-2 transition-colors duration-150 hover:text-rail-fg"
+              >
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
         <NavLinks horizontal />
       </header>

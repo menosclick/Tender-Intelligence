@@ -127,7 +127,7 @@ export default async function InboxPage({
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="Tender Inbox"
-        sub={`${visible.length} open qualified tender${visible.length === 1 ? "" : "s"}${
+        sub={`${visible.length} open tender${visible.length === 1 ? "" : "s"}${
           hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""
         } — qualify them into the pipeline or hide them.`}
         actions={
