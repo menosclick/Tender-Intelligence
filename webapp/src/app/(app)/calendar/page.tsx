@@ -1,30 +1,43 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { getMilestoneEvents } from "@/lib/calendar-data";
-import { PageHeader, microLabel } from "@/lib/ui";
-import { DeadlineCalendar, type CalendarItem } from "@/lib/viz";
+import { PageHeader, btnSecondary, microLabel } from "@/lib/ui";
+import {
+  MonthGrid,
+  currentMonth,
+  isValidMonth,
+  monthTitle,
+  shiftMonth,
+} from "./month-grid";
 
 export const dynamic = "force-dynamic";
 
-// Calendar, first iteration: the 60-day milestone timeline (moved here from
-// the dashboard) plus the full dated list. A month-grid calendar view is a
-// later iteration — this page is its permanent home.
-export default async function CalendarPage() {
+// Calendar: a real month grid plus the full dated list. Only upcoming dates
+// are tracked (getMilestoneEvents drops past dates), so navigation starts at
+// the current month — earlier months would misleadingly render empty.
+export default async function CalendarPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ m?: string }>;
+}) {
+  const { m } = await searchParams;
+  const nowMonth = currentMonth();
+  const month = isValidMonth(m) && m >= nowMonth ? m : nowMonth;
+
   const admin = createSupabaseAdmin();
   const events = await getMilestoneEvents(admin);
-
-  // Group the flat events per tender for the timeline component.
-  const byTender = new Map<number, CalendarItem>();
-  for (const e of events) {
-    const item =
-      byTender.get(e.tenderId) ??
-      ({ id: e.tenderId, title: e.tenderTitle, milestones: [] } as CalendarItem);
-    item.milestones.push({ label: e.label, date: e.date, days: e.days, hot: e.hot });
-    byTender.set(e.tenderId, item);
-  }
-  const items = [...byTender.values()].sort(
-    (a, b) => a.milestones[0].days - b.milestones[0].days
-  );
+  const prev = shiftMonth(month, -1);
+  const next = shiftMonth(month, 1);
+  const canGoBack = prev >= nowMonth;
+  // Forward navigation stops at the last month with a tracked date, capped at
+  // a year out — paging into provably blank grids helps nobody. Dates further
+  // away (DAS/framework windows) stay in the list below as "long-term".
+  const horizon = shiftMonth(nowMonth, 12);
+  const capMonth = events
+    .map((e) => e.date.slice(0, 7))
+    .filter((mm) => mm <= horizon)
+    .reduce((max, mm) => (mm > max ? mm : max), nowMonth);
+  const canGoForward = month < capMonth;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -34,14 +47,47 @@ export default async function CalendarPage() {
       />
 
       <div className="mt-5 rounded-xl border border-line bg-surface p-4">
-        <h2 className="text-sm font-semibold text-fg">Next 60 days</h2>
-        <div className="mt-3">
-          <DeadlineCalendar items={items} horizonDays={60} />
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="text-sm font-semibold text-fg">{monthTitle(month)}</h2>
+          <div className="flex items-center gap-2">
+            {month !== nowMonth && (
+              <Link href="/calendar" className={btnSecondary}>
+                Today
+              </Link>
+            )}
+            {canGoBack ? (
+              <Link
+                href={`/calendar?m=${prev}`}
+                className={btnSecondary}
+                aria-label={`Previous month, ${monthTitle(prev)}`}
+              >
+                ←
+              </Link>
+            ) : (
+              <span className={`${btnSecondary} pointer-events-none opacity-40`} aria-hidden="true">
+                ←
+              </span>
+            )}
+            {canGoForward ? (
+              <Link
+                href={`/calendar?m=${next}`}
+                className={btnSecondary}
+                aria-label={`Next month, ${monthTitle(next)}`}
+              >
+                →
+              </Link>
+            ) : (
+              <span className={`${btnSecondary} pointer-events-none opacity-40`} aria-hidden="true">
+                →
+              </span>
+            )}
+          </div>
         </div>
+        <MonthGrid month={month} events={events} />
       </div>
 
       <h2 className={`${microLabel} mt-8`}>All upcoming dates · {events.length}</h2>
-      <div className="mt-2 overflow-x-auto rounded-xl border border-line bg-surface">
+      <div className="relative mt-2 overflow-x-auto rounded-xl border border-line bg-surface">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
             <tr className={`border-b border-line text-left ${microLabel}`}>

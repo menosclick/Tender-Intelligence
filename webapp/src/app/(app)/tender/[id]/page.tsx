@@ -478,7 +478,10 @@ export default async function TenderDetailPage({
         )}
 
         {pack && (
-          <div className="overflow-hidden rounded-xl border border-line-strong bg-surface">
+          <div
+            id="bid-pack"
+            className="scroll-mt-16 overflow-hidden rounded-xl border border-line-strong bg-surface"
+          >
             <div className="flex items-center justify-between gap-4 bg-accent-soft px-5 py-3">
               <h2 className="text-sm font-semibold text-accent-fg">
                 Bid pack · generated for this Hot tender

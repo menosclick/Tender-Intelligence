@@ -5,10 +5,12 @@ import { redirect } from "next/navigation";
 import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
 import { BOARD_STAGES, MANUAL_MILESTONE_KINDS, type BoardStage } from "@/lib/format";
 
-// GOLDEN RULE: the app writes to bid_pipeline, tender_feedback and
-// tender_milestones, and may INSERT new rows into tenders_scraped ONLY with
-// platform='manual' (status pre-set to 'analyzed' so the n8n pipeline never
-// picks them up). It never updates or deletes rows the scraper owns.
+// GOLDEN RULE: the app writes to bid_pipeline, tender_feedback,
+// tender_milestones and tender_actions, and may INSERT new rows into
+// tenders_scraped ONLY with platform='manual' (status pre-set to 'analyzed'
+// so the n8n pipeline never picks them up). It never updates or deletes rows
+// the scraper owns. tender_documents and milestone_extractions are written by
+// the n8n Leidraad Milestone Extractor — the app only reads them.
 
 async function requireUser() {
   const supabase = await createSupabaseServer();
