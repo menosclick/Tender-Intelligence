@@ -1,11 +1,10 @@
 import Link from "next/link";
+import { NL_PROVINCES, NL_MAP_VIEWBOX } from "./nl-provinces";
 
-// Netherlands opportunity map — first iteration.
-//
-// Rendered as a schematic province tile map (SVG, no mapping dependency):
-// twelve tiles in approximate geographic position, count per province.
-// The component API is per-province data, so real province geometry can
-// replace the tiles in a later iteration without touching callers.
+// Netherlands opportunity map — real province geometry (CBS/Kadaster
+// generalized borders baked into nl-provinces.ts as static SVG paths; no
+// mapping library). Provinces with open tenders get a tinted fill and a
+// count badge at their centroid; the title carries the tender details.
 //
 // Location source: the TenderNed publication's NUTS codes (place of
 // performance as published). Buyer addresses are NEVER used as project
@@ -66,25 +65,6 @@ export const NUTS2_PROVINCE: Record<string, string> = {
   NL42: "Limburg",
 };
 
-// Approximate geographic tile positions (col, row) on a 4×4 grid.
-const TILE: Record<string, { col: number; row: number; abbr: string }> = {
-  Friesland: { col: 2, row: 0, abbr: "FR" },
-  Groningen: { col: 3, row: 0, abbr: "GR" },
-  "Noord-Holland": { col: 1, row: 1, abbr: "NH" },
-  Flevoland: { col: 2, row: 1, abbr: "FL" },
-  Drenthe: { col: 3, row: 1, abbr: "DR" },
-  "Zuid-Holland": { col: 0, row: 2, abbr: "ZH" },
-  Utrecht: { col: 1, row: 2, abbr: "UT" },
-  Gelderland: { col: 2, row: 2, abbr: "GE" },
-  Overijssel: { col: 3, row: 2, abbr: "OV" },
-  Zeeland: { col: 0, row: 3, abbr: "ZE" },
-  "Noord-Brabant": { col: 1, row: 3, abbr: "NB" },
-  Limburg: { col: 2, row: 3, abbr: "LI" },
-};
-
-const CELL = 64;
-const GAP = 6;
-
 export function NetherlandsMap({
   provinces,
   nationalCount,
@@ -98,8 +78,6 @@ export function NetherlandsMap({
 }) {
   const byProvince = new Map(provinces.map((p) => [p.province, p.tenders]));
   const regional = provinces.reduce((n, p) => n + p.tenders.length, 0);
-  const width = 4 * CELL + 3 * GAP;
-  const height = 4 * CELL + 3 * GAP;
 
   if (regional === 0 && nationalCount === 0 && otherRegions.length === 0) {
     return (
@@ -112,66 +90,73 @@ export function NetherlandsMap({
 
   return (
     <div>
-      {regional > 0 ? (
-        <svg
-          viewBox={`0 0 ${width} ${height}`}
-          className="mx-auto block w-full max-w-72"
-          role="img"
-          aria-label={`Schematic map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region`}
-        >
-          {Object.entries(TILE).map(([province, t]) => {
-            const tenders = byProvince.get(province) ?? [];
-            const x = t.col * (CELL + GAP);
-            const y = t.row * (CELL + GAP);
-            const has = tenders.length > 0;
-            return (
-              <g key={province}>
-                <title>
-                  {has
-                    ? `${province} — ${tenders
-                        .map(
-                          (m) =>
-                            `${m.title} · ${m.buyer} · ${m.domain} · ${m.label}${
-                              m.pipelineStage ? ` · ${m.pipelineStage}` : ""
-                            } · NUTS: ${m.nutsName}`
-                        )
-                        .join(" | ")}`
-                    : province}
-                </title>
-                <rect
-                  x={x}
-                  y={y}
-                  width={CELL}
-                  height={CELL}
-                  rx="6"
-                  className={has ? "fill-accent-soft" : "fill-sunken"}
-                  stroke="var(--color-line)"
-                />
-                <text
-                  x={x + 8}
-                  y={y + 18}
-                  className={`text-[11px] font-semibold ${has ? "fill-accent-fg" : "fill-fg-soft"}`}
-                >
-                  {t.abbr}
-                </text>
-                {has && (
+      <svg
+        viewBox={NL_MAP_VIEWBOX}
+        className="mx-auto block w-full max-w-80"
+        role="img"
+        aria-label={`Map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region`}
+      >
+        {NL_PROVINCES.map((p) => {
+          const tenders = byProvince.get(p.name) ?? [];
+          const has = tenders.length > 0;
+          return (
+            <g key={p.name}>
+              <title>
+                {has
+                  ? `${p.name} — ${tenders
+                      .map(
+                        (m) =>
+                          `${m.title} · ${m.buyer} · ${m.domain} · ${m.label}${
+                            m.pipelineStage ? ` · ${m.pipelineStage}` : ""
+                          } · NUTS: ${m.nutsName}`
+                      )
+                      .join(" | ")}`
+                  : p.name}
+              </title>
+              <path
+                d={p.d}
+                className={has ? "fill-accent-soft" : "fill-sunken"}
+                stroke="var(--color-surface)"
+                strokeWidth="1.5"
+                strokeLinejoin="round"
+              />
+              {has && (
+                <>
+                  <circle
+                    cx={p.label[0]}
+                    cy={p.label[1]}
+                    r="14"
+                    className="fill-surface"
+                    stroke="var(--color-accent)"
+                    strokeWidth="1.5"
+                  />
                   <text
-                    x={x + CELL - 8}
-                    y={y + CELL - 10}
-                    textAnchor="end"
-                    className="fill-fg text-[16px] font-semibold tabular-nums"
+                    x={p.label[0]}
+                    y={p.label[1]}
+                    textAnchor="middle"
+                    dominantBaseline="central"
+                    className="fill-accent-fg text-[15px] font-semibold tabular-nums"
                   >
                     {tenders.length}
                   </text>
-                )}
-              </g>
-            );
-          })}
-        </svg>
-      ) : (
-        <p className="py-4 text-center text-xs text-fg-soft">
-          No open tenders name a specific region right now.
-        </p>
+                </>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+      {regional > 0 && (
+        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-mid">
+          {provinces
+            .slice()
+            .sort((a, b) => b.tenders.length - a.tenders.length)
+            .map((p) => (
+              <li key={p.province}>
+                <span className="font-medium text-fg">{p.province}</span>{" "}
+                <span className="tabular-nums">{p.tenders.length}</span>
+              </li>
+            ))}
+        </ul>
       )}
 
       <div className="mt-3 space-y-1 text-xs text-fg-mid">
@@ -198,8 +183,7 @@ export function NetherlandsMap({
       <p className="mt-2 text-xs leading-relaxed text-fg-soft">
         Locations come from the TenderNed publication&apos;s NUTS region (place
         of performance as published) — buyer addresses are never shown as
-        project locations. Schematic tiles for now; real province geometry can
-        drop in later.
+        project locations.
       </p>
     </div>
   );
