@@ -48,7 +48,7 @@ export default function NewTenderPage() {
         href="/board"
         className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
       >
-        ← Back to bid board
+        ← Back to Tender Pipeline
       </Link>
       <h1 className="mt-3 text-xl font-semibold tracking-tight">
         Register a tender manually

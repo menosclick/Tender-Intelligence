@@ -207,11 +207,11 @@ export default async function TenderDetailPage({
             href="/board"
             className="inline-flex items-center gap-1.5 rounded-lg bg-accent-soft px-3 py-1.5 text-sm font-medium text-accent-fg transition-colors duration-150 hover:bg-accent-soft/70"
           >
-            On board: {stageLabel(t.pipeline_stage)} →
+            In pipeline: {stageLabel(t.pipeline_stage)} →
           </Link>
         ) : (
           <form action={addAction}>
-            <button className={btnPrimary}>Add to bid board</button>
+            <button className={btnPrimary}>Add to Tender Pipeline</button>
           </form>
         )}
       </div>

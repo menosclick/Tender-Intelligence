@@ -11,14 +11,16 @@ export function Kpi({
   value,
   sub,
   tone,
+  href,
 }: {
   label: string;
   value: string | number;
   sub?: string;
   tone?: "hot" | "accent";
+  href?: string; // metric links to the records it counts
 }) {
-  return (
-    <div className="flex-1 px-5 py-4">
+  const inner = (
+    <>
       <dt className={microLabel}>{label}</dt>
       <dd
         className={`mt-1 text-2xl font-semibold tabular-nums ${
@@ -28,8 +30,18 @@ export function Kpi({
         {value}
       </dd>
       {sub && <dd className="mt-0.5 text-xs text-fg-soft">{sub}</dd>}
-    </div>
+    </>
   );
+  if (href)
+    return (
+      <Link
+        href={href}
+        className="flex-1 px-5 py-4 transition-colors duration-150 hover:bg-sunken/60"
+      >
+        {inner}
+      </Link>
+    );
+  return <div className="flex-1 px-5 py-4">{inner}</div>;
 }
 
 export function ChartCard({
@@ -47,33 +59,59 @@ export function ChartCard({
   );
 }
 
-// Horizontal bar list: label · bar scaled to the max · count.
+// Horizontal bar list: label · bar scaled to the max · count. Rows can link
+// (e.g. a domain filters the Tender Inbox) and optionally show a share of the
+// total next to the count.
 export function HBarList({
   rows,
   emptyText = "Nothing matches the current filters.",
+  showPct = false,
 }: {
-  rows: { label: string; count: number; hot?: boolean }[];
+  rows: { label: string; count: number; hot?: boolean; href?: string }[];
   emptyText?: string;
+  showPct?: boolean;
 }) {
   const max = Math.max(1, ...rows.map((r) => r.count));
+  const total = rows.reduce((n, r) => n + r.count, 0);
   if (rows.length === 0)
     return <p className="py-4 text-center text-xs text-fg-soft">{emptyText}</p>;
   return (
     <div className="space-y-2">
-      {rows.map((r) => (
-        <div key={r.label} className="flex items-center gap-3 text-sm">
-          <span className="w-32 shrink-0 truncate text-fg-mid" title={r.label}>
-            {r.label}
-          </span>
-          <div className="h-4 flex-1 overflow-hidden rounded-sm bg-sunken">
-            <div
-              className={`h-full rounded-sm ${r.hot ? "bg-hot" : "bg-accent"}`}
-              style={{ width: `${(r.count / max) * 100}%` }}
-            />
+      {rows.map((r) => {
+        const pct = total > 0 ? Math.round((r.count / total) * 100) : 0;
+        const bar = (
+          <>
+            <span className="w-32 shrink-0 truncate text-fg-mid" title={r.label}>
+              {r.label}
+            </span>
+            <div className="h-4 flex-1 overflow-hidden rounded-sm bg-sunken">
+              <div
+                className={`h-full rounded-sm ${r.hot ? "bg-hot" : "bg-accent"}`}
+                style={{ width: `${(r.count / max) * 100}%` }}
+              />
+            </div>
+            <span className="w-8 shrink-0 text-right tabular-nums text-fg">{r.count}</span>
+            {showPct && (
+              <span className="w-10 shrink-0 text-right text-xs tabular-nums text-fg-soft">
+                {r.count > 0 ? `${pct}%` : "—"}
+              </span>
+            )}
+          </>
+        );
+        return r.href ? (
+          <Link
+            key={r.label}
+            href={r.href}
+            className="flex items-center gap-3 rounded-md text-sm transition-colors duration-150 hover:bg-sunken/60"
+          >
+            {bar}
+          </Link>
+        ) : (
+          <div key={r.label} className="flex items-center gap-3 text-sm">
+            {bar}
           </div>
-          <span className="w-8 shrink-0 text-right tabular-nums text-fg">{r.count}</span>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

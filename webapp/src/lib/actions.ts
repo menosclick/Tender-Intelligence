@@ -30,6 +30,8 @@ export async function addToBoard(tenderId: number) {
     );
   if (error) throw new Error(error.message);
   revalidatePath("/board");
+  revalidatePath("/inbox");
+  revalidatePath("/dashboard");
   revalidatePath(`/tender/${tenderId}`);
 }
 
@@ -239,8 +241,9 @@ export async function recordFeedback(
       .update({ stage: finalStage[value] })
       .eq("tender_id", tenderId);
     revalidatePath("/board");
-    revalidatePath("/dashboard");
   }
+  revalidatePath("/dashboard");
+  revalidatePath("/inbox");
   revalidatePath(`/tender/${tenderId}`);
 }
 

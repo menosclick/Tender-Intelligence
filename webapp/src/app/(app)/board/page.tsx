@@ -44,8 +44,8 @@ export default async function BoardPage() {
   return (
     <div>
       <PageHeader
-        title="Bid board"
-        sub="Drag cards between stages. Add tenders from their detail page."
+        title="Tender Pipeline"
+        sub="Drag cards between stages. Add tenders from their detail page or the Tender Inbox."
       />
       <div className="mt-5">
         <BoardClient cards={board} />

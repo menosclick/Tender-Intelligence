@@ -61,8 +61,17 @@ export default async function AppLayout({
 
   return (
     <div className="min-h-screen">
+      {/* Small screens: the rail becomes a top bar with the same links. */}
+      <header className="sticky top-0 z-10 bg-rail print:hidden lg:hidden">
+        <div className="flex items-center gap-2.5 px-4 pb-2 pt-3">
+          <BrandMark />
+          <p className="text-sm font-semibold text-rail-fg">Tender Intelligence</p>
+        </div>
+        <NavLinks horizontal />
+      </header>
+
       {/* Navigation rail: the one committed color surface */}
-      <aside className="fixed inset-y-0 left-0 z-10 flex w-58 flex-col bg-rail print:hidden">
+      <aside className="fixed inset-y-0 left-0 z-10 hidden w-58 flex-col bg-rail print:hidden lg:flex">
         <div className="flex items-center gap-2.5 px-4 pb-5 pt-5">
           <BrandMark />
           <div className="leading-tight">
@@ -94,9 +103,9 @@ export default async function AppLayout({
       </aside>
 
       {/* Main */}
-      <div className="pl-58 print:pl-0">
+      <div className="lg:pl-58 print:pl-0">
         <HealthBanner health={h} />
-        <main className="px-8 py-7 print:p-0">{children}</main>
+        <main className="px-4 py-6 lg:px-8 lg:py-7 print:p-0">{children}</main>
       </div>
     </div>
   );

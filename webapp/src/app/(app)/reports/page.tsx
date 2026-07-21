@@ -273,7 +273,7 @@ export default async function ReportsPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <BreakdownTable
-          title="Bid board: count & value by stage"
+          title="Tender Pipeline: count & value by stage"
           columns={["Stage", "Tenders", "Value"]}
           rows={byStage}
         />

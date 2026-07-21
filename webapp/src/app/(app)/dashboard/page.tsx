@@ -1,17 +1,25 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import {
-  deadlineText,
-  deadlineClass,
-  daysUntil,
-  milestoneLabel,
-  BOARD_STAGES,
-  stageLabel,
-  asArray,
-} from "@/lib/format";
+import { deadlineText, deadlineClass, stageLabel, asArray } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
-import { LabelChip, PageHeader, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
-import { Kpi, ChartCard, HBarList, Columns, DeadlineCalendar, type CalendarItem } from "@/lib/viz";
+import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
+import { Kpi, ChartCard, HBarList } from "@/lib/viz";
+import { getMilestoneEvents } from "@/lib/calendar-data";
+import {
+  getOperationalActions,
+  sortActions,
+  isOverdue,
+  isDueThisWeek,
+  ACTION_STATUS_LABEL,
+  ACTION_STATUS_CHIP,
+} from "@/lib/ops";
+import {
+  NetherlandsMap,
+  parseNutsCodes,
+  NUTS2_PROVINCE,
+  type MapTender,
+  type ProvinceBucket,
+} from "@/lib/nl-map";
 
 export const dynamic = "force-dynamic";
 
@@ -19,7 +27,6 @@ type Row = {
   id: number;
   title: string | null;
   buyer: string | null;
-  buyer_type: string | null;
   label: string | null;
   score: number | null;
   deadline: string | null;
@@ -28,162 +35,81 @@ type Row = {
   recommended_products: unknown;
 };
 
-// inputCls minus w-full: compact inline filter controls.
-const selectCls =
-  "rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
+const ACTIVE_STAGES = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
 
-const DUE_BUCKETS = [
-  { key: "14", label: "≤ 14 days", test: (d: number) => d <= 14 },
-  { key: "30", label: "15–30 days", test: (d: number) => d > 14 && d <= 30 },
-  { key: "60", label: "31–60 days", test: (d: number) => d > 30 && d <= 60 },
-  { key: "365", label: "> 60 days", test: (d: number) => d > 60 && d <= 365 },
-  { key: "long", label: "Long-term", test: (d: number) => d > 365 },
-];
-
-// Board stages (stored values) that mean "past Analysis" — these tenders get
-// their dates tracked on the deadline calendar.
-const CALENDAR_STAGES = ["Analysis", "Q&A", "Submitted", "Award"];
-
-// The anchor screen: KPIs and domain/deadline charts on top, the bid-pipeline
-// funnel, a deadline calendar for pursuits in Analysis+, then the work queue.
-export default async function DashboardPage({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const params = await searchParams;
-  const first = (v: string | string[] | undefined) =>
-    Array.isArray(v) ? v[0] ?? "" : v ?? "";
-  const LABELS = ["warmplus", "all", "Hot", "Warm", "Cold", "Monitor"];
-  // `show=all` is the pre-redesign toggle URL — keep old bookmarks meaningful.
-  let label = first(params.label) || (first(params.show) === "all" ? "all" : "warmplus");
-  if (!LABELS.includes(label)) label = "warmplus";
-  const buyerParam = first(params.buyer);
-  const due = DUE_BUCKETS.some((b) => b.key === first(params.due)) ? first(params.due) : "";
+// The command center answers four questions, in order: what needs attention
+// now, what's the next important deadline, who are we waiting for, and what
+// new qualified opportunities appeared. Reporting lives on /reports; the full
+// discovery table lives on /inbox.
+export default async function DashboardPage() {
   const admin = createSupabaseAdmin();
 
-  // "New" = scraped in the last 24h (covers this morning's 09:00 run until tomorrow's).
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const activeStages = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
-  // Intake chart window: first day of the month 5 months back, in UTC.
-  const nowUtc = new Date();
-  const windowStart = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - 5, 1));
-
-  const [{ data: open }, scraped, { data: fresh }, { data: feedback }, { data: board }, { data: qualifiedAll }] =
+  const [{ data: open }, { data: feedback }, { data: board }, actions, events] =
     await Promise.all([
       admin
         .from("v_app_tenders")
         .select(
-          "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products"
+          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products"
         )
         .gte("days_to_deadline", 0)
-        .order("score", { ascending: false })
-        .order("deadline", { ascending: true }),
-      admin.from("tenders_scraped").select("id", { count: "exact", head: true }),
-      admin.from("tenders_scraped").select("id").gte("scraped_at", since),
+        .order("score", { ascending: false }),
       admin.from("tender_feedback").select("tender_id,value").eq("kind", "relevance"),
       admin.from("bid_pipeline").select("tender_id,stage"),
-      // Historical context for the intake chart — bounded to the visible
-      // window so the query can never hit PostgREST's 1,000-row cap silently.
-      admin
-        .from("tenders_scraped")
-        .select("scraped_at")
-        .eq("status", "analyzed")
-        .not("label", "is", null)
-        .neq("label", "Disqualified")
-        .gte("scraped_at", windowStart.toISOString()),
+      getOperationalActions(),
+      getMilestoneEvents(admin),
     ]);
 
-  const openAll = (open ?? []) as Row[];
-  const freshIds = new Set((fresh ?? []).map((f) => f.id));
   const notRelevantIds = new Set(
     (feedback ?? []).filter((f) => f.value === "not_relevant").map((f) => f.tender_id)
   );
-  // Feedback has a hard consequence here: marked not-relevant → gone from the
-  // dashboard (still in Search / the archive). Count shown in the subtitle.
-  const openRows = openAll.filter((t) => !notRelevantIds.has(t.id));
-  const hiddenCount = openAll.length - openRows.length;
+  const openRows = ((open ?? []) as Row[]).filter((t) => !notRelevantIds.has(t.id));
+  const qualified = openRows.filter((t) => t.label === "Hot" || t.label === "Warm");
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
+  const activePipeline = boardCards.filter((b) => ACTIVE_STAGES.includes(b.stage));
 
-  // The calendar is driven by BOARD STAGE, not by the open-tenders query: a
-  // Submitted/Award tender leaves openRows the day its deadline passes, but
-  // that's exactly when demo/award/objection dates still need tracking. Fetch
-  // those tenders by id, unfiltered on deadline. Not-relevant stays hidden.
-  const calendarIds = boardCards
-    .filter((b) => CALENDAR_STAGES.includes(b.stage) && !notRelevantIds.has(b.tender_id))
-    .map((b) => b.tender_id);
-  // Keyword provenance + question deadline live on the base table (small .in()).
-  const extrasIds = [...new Set([...openRows.map((t) => t.id), ...calendarIds])];
-  const [{ data: extras }, { data: msRows }, { data: calRowsRaw }] = await Promise.all([
-    extrasIds.length
-      ? admin
-          .from("tenders_scraped")
-          .select("id,keyword_matches,deadline_vragen")
-          .in("id", extrasIds)
-      : { data: [] as { id: number; keyword_matches: string[] | null; deadline_vragen: string | null }[] },
-    calendarIds.length
-      ? admin
-          .from("tender_milestones")
-          .select("tender_id,kind,milestone_date,note")
-          .in("tender_id", calendarIds)
-      : { data: [] as { tender_id: number; kind: string; milestone_date: string; note: string | null }[] },
-    calendarIds.length
-      ? admin
-          .from("v_app_tenders")
-          .select("id,title,deadline,days_to_deadline")
-          .in("id", calendarIds)
-      : { data: [] as { id: number; title: string | null; deadline: string | null; days_to_deadline: number | null }[] },
-  ]);
+  // Deadlines in 30 days: official deadlines of open qualified tenders plus
+  // tracked milestones of pipeline tenders, deduped per tender+date.
+  const deadlineKeys = new Set<string>();
+  for (const t of qualified)
+    if (t.deadline && t.days_to_deadline !== null && t.days_to_deadline <= 30)
+      deadlineKeys.add(`${t.id}:${t.deadline}`);
+  for (const e of events) if (e.days <= 30) deadlineKeys.add(`${e.tenderId}:${e.date}`);
+
+  const sortedActions = sortActions(actions);
+  const openActions = sortedActions.filter((a) => a.status !== "completed");
+  const waitingCount = openActions.filter((a) => a.waitingOn).length;
+  const dueThisWeekCount = openActions.filter(isDueThisWeek).length;
+  const hasSampleActions = actions.some((a) => a.sample);
+
+  // Extras for domain classification, recency and the map (small .in() reads).
+  const ids = openRows.map((t) => t.id);
+  const { data: extras } = ids.length
+    ? await admin
+        .from("tenders_scraped")
+        .select("id,keyword_matches,analyzed_at,scraped_at,raw_json")
+        .in("id", ids)
+    : {
+        data: [] as {
+          id: number;
+          keyword_matches: string[] | null;
+          analyzed_at: string | null;
+          scraped_at: string | null;
+          raw_json: string | null;
+        }[],
+      };
   const extrasById = new Map((extras ?? []).map((e) => [e.id, e]));
-  const msByTender = new Map<number, { kind: string; milestone_date: string; note: string | null }[]>();
-  for (const m of msRows ?? []) {
-    const list = msByTender.get(m.tender_id) ?? [];
-    list.push(m);
-    msByTender.set(m.tender_id, list);
-  }
-
-  const kpis = {
-    open: openRows.length,
-    hot: openRows.filter((t) => t.label === "Hot").length,
-    fresh: openRows.filter((t) => freshIds.has(t.id)).length,
-    closing: openRows.filter((t) => (t.days_to_deadline ?? 999) <= 14).length,
-    onBoard: boardCards.filter((b) => activeStages.includes(b.stage)).length,
-  };
-
-  // Filters
-  const buyerTypes = [...new Set(openRows.map((t) => t.buyer_type ?? "unknown"))].sort();
-  const buyer = buyerTypes.includes(buyerParam) ? buyerParam : "";
-  let rows = openRows;
-  if (label === "warmplus") rows = rows.filter((t) => t.label === "Hot" || t.label === "Warm");
-  else if (label !== "all") rows = rows.filter((t) => t.label === label);
-  if (buyer) rows = rows.filter((t) => (t.buyer_type ?? "unknown") === buyer);
-  if (due) {
-    const bucket = DUE_BUCKETS.find((b) => b.key === due);
-    if (bucket) rows = rows.filter((t) => t.days_to_deadline !== null && bucket.test(t.days_to_deadline));
-  }
-
-  // Charts (respect the filters). Zero-count buckets stay visible — "0 urgent"
-  // is the most valuable reading of the deadline chart, not noise.
-  const byDeadline =
-    rows.length === 0
-      ? []
-      : DUE_BUCKETS.map((b) => ({
-          label: b.label,
-          count: rows.filter((t) => t.days_to_deadline !== null && b.test(t.days_to_deadline))
-            .length,
-          hot: b.key === "14",
-        }));
-
-  // Solution domain of the requirement (ITSM / ITOM / IAM / PAM / …).
-  const domainCount = new Map<string, number>();
-  for (const t of rows) {
-    const extra = extrasById.get(t.id);
-    const domain = classifyDomain([
+  const domainOf = (t: Row) =>
+    classifyDomain([
       t.title,
       asArray(t.recommended_products).join(" "),
-      (extra?.keyword_matches ?? []).join(" "),
+      (extrasById.get(t.id)?.keyword_matches ?? []).join(" "),
     ]);
-    domainCount.set(domain, (domainCount.get(domain) ?? 0) + 1);
+
+  // Portfolio: open tenders by solution domain (count + share), rows filter the Inbox.
+  const domainCount = new Map<string, number>();
+  for (const t of openRows) {
+    const d = domainOf(t);
+    domainCount.set(d, (domainCount.get(d) ?? 0) + 1);
   }
   const byDomain = [
     ...CORE_DOMAINS.map((d) => ({ label: d, count: domainCount.get(d) ?? 0 })),
@@ -191,77 +117,62 @@ export default async function DashboardPage({
       .filter(([d]) => !CORE_DOMAINS.includes(d))
       .sort((a, b) => b[1] - a[1])
       .map(([d, n]) => ({ label: d, count: n })),
-  ];
+  ].map((r) => ({ ...r, href: `/inbox?label=all&domain=${encodeURIComponent(r.label)}` }));
 
-  // Qualified intake, last 6 months (historical, not filtered). Month keys in
-  // UTC to match the window bound; leading empty months trimmed.
-  const months: { label: string; value: number }[] = [];
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(Date.UTC(nowUtc.getUTCFullYear(), nowUtc.getUTCMonth() - i, 1));
-    const key = d.toISOString().slice(0, 7);
-    months.push({
-      label: d.toLocaleDateString("en-GB", { month: "short", timeZone: "UTC" }),
-      value: (qualifiedAll ?? []).filter((q) => (q.scraped_at ?? "").startsWith(key)).length,
-    });
+  // Netherlands map buckets from the publications' NUTS codes.
+  const provinceMap = new Map<string, MapTender[]>();
+  const otherRegions: MapTender[] = [];
+  let nationalCount = 0;
+  let noDataCount = 0;
+  for (const t of openRows) {
+    const nuts = parseNutsCodes(extrasById.get(t.id)?.raw_json ?? null);
+    const entry = nuts[0];
+    if (!entry) {
+      noDataCount++;
+      continue;
+    }
+    const mt: MapTender = {
+      id: t.id,
+      title: t.title ?? `Tender #${t.id}`,
+      buyer: t.buyer ?? "",
+      domain: domainOf(t),
+      label: t.label ?? "unscored",
+      pipelineStage: t.pipeline_stage ? stageLabel(t.pipeline_stage) : null,
+      nutsName: entry.omschrijving,
+    };
+    if (entry.code === "NL") {
+      nationalCount++;
+    } else {
+      const province = NUTS2_PROVINCE[entry.code.slice(0, 4)];
+      if (province) {
+        const list = provinceMap.get(province) ?? [];
+        list.push(mt);
+        provinceMap.set(province, list);
+      } else {
+        otherRegions.push(mt);
+      }
+    }
   }
-  const firstActive = months.findIndex((m) => m.value > 0);
-  const intake = firstActive === -1 ? [] : months.slice(firstActive);
+  const provinces: ProvinceBucket[] = [...provinceMap.entries()].map(
+    ([province, tenders]) => ({ province, tenders })
+  );
 
-  // Deadline calendar: every tender in Analysis or beyond. TenderNed's own
-  // dates (question deadline, submission) come from the scraped row and stay
-  // authoritative; tender_milestones fills in the rest of the lifecycle
-  // (NvI, demo, PoC, award, contract start) entered on the tender detail page.
-  const calendarItems: CalendarItem[] = (calRowsRaw ?? [])
-    .map((t) => {
-      const byKind = new Map<string, CalendarItem["milestones"][number]>();
-      const vragen = extrasById.get(t.id)?.deadline_vragen ?? "";
-      const vragenDate = /^\d{4}-\d{2}-\d{2}/.exec(vragen.trim())?.[0];
-      if (vragenDate) {
-        const days = daysUntil(vragenDate);
-        if (days !== null && days >= 0)
-          byKind.set("question_deadline", {
-            label: milestoneLabel("question_deadline"),
-            date: vragenDate,
-            days,
-          });
-      }
-      if (t.deadline && t.days_to_deadline !== null && t.days_to_deadline >= 0)
-        byKind.set("submission_deadline", {
-          label: milestoneLabel("submission_deadline"),
-          date: t.deadline,
-          days: t.days_to_deadline,
-          hot: true,
-        });
-      for (const m of msByTender.get(t.id) ?? []) {
-        if (byKind.has(m.kind)) continue;
-        const days = daysUntil(m.milestone_date);
-        if (days === null || days < 0) continue;
-        byKind.set(m.kind, {
-          // "Other" says nothing on a timeline — the note is the label there.
-          label:
-            m.kind === "other" && m.note
-              ? m.note.slice(0, 28)
-              : milestoneLabel(m.kind),
-          date: m.milestone_date,
-          days,
-          hot: m.kind === "submission_deadline",
-        });
-      }
-      const milestones = [...byKind.values()].sort((a, b) => a.days - b.days);
-      return { id: t.id, title: t.title ?? `Tender #${t.id}`, milestones };
+  // Latest qualified: five most recently analyzed Hot/Warm tenders.
+  const latestQualified = [...qualified]
+    .sort((a, b) => {
+      const ta = extrasById.get(a.id)?.analyzed_at ?? extrasById.get(a.id)?.scraped_at ?? "";
+      const tb = extrasById.get(b.id)?.analyzed_at ?? extrasById.get(b.id)?.scraped_at ?? "";
+      return tb.localeCompare(ta);
     })
-    .filter((t) => t.milestones.length > 0)
-    .sort((a, b) => a.milestones[0].days - b.milestones[0].days);
+    .slice(0, 5);
 
-  const filtersActive = label !== "warmplus" || buyer !== "" || due !== "";
+  const upcoming = events.slice(0, 5);
 
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
-        title="Open tenders"
-        sub={`${kpis.open} qualified and open${
-          hiddenCount > 0 ? ` · ${hiddenCount} not relevant hidden` : ""
-        } · ${scraped.count ?? 0} scraped in total`}
+        title="Tender Command Center"
+        sub="Your active tender work, upcoming deadlines and latest qualified opportunities."
         actions={
           <Link href="/tender/new" className={btnSecondary}>
             <svg
@@ -280,153 +191,254 @@ export default async function DashboardPage({
         }
       />
 
-      {/* KPI overview */}
+      {/* Compact metric strip — each metric opens the records it counts. */}
       <dl className="mt-5 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:flex-row sm:divide-x sm:divide-y-0">
-        <Kpi label="Open now" value={kpis.open} sub="qualified, deadline ahead" />
-        <Kpi label="Hot" value={kpis.hot} sub="top-priority matches" tone={kpis.hot > 0 ? "hot" : undefined} />
-        <Kpi label="New today" value={kpis.fresh} sub="from this morning's scrape" tone={kpis.fresh > 0 ? "accent" : undefined} />
-        <Kpi label="Closing ≤ 14d" value={kpis.closing} sub="act this sprint or drop" tone={kpis.closing > 0 ? "hot" : undefined} />
-        <Kpi label="On bid board" value={kpis.onBoard} sub="Identified → Award" />
+        <Kpi
+          label="Open qualified"
+          value={qualified.length}
+          sub="Hot + Warm, deadline ahead"
+          href="/inbox"
+        />
+        <Kpi
+          label="Active pipeline"
+          value={activePipeline.length}
+          sub="Identified → Award"
+          href="/board"
+        />
+        <Kpi
+          label="Deadlines ≤ 30d"
+          value={deadlineKeys.size}
+          sub="official dates & milestones"
+          tone={deadlineKeys.size > 0 ? "hot" : undefined}
+          href="/calendar"
+        />
+        <Kpi
+          label="Waiting on others"
+          value={waitingCount}
+          sub="open actions blocked externally"
+          href="#needs-attention"
+        />
+        <Kpi
+          label="Due this week"
+          value={dueThisWeekCount}
+          sub="internal actions"
+          href="#needs-attention"
+        />
       </dl>
 
-      {/* Charts */}
-      <div className="mt-5 grid gap-5 lg:grid-cols-3">
-        <ChartCard title="By solution domain">
-          <HBarList rows={byDomain} />
-        </ChartCard>
-        <ChartCard title="By deadline">
-          <HBarList rows={byDeadline} />
-        </ChartCard>
-        <ChartCard title="Qualified intake · last months">
-          <Columns points={intake} />
-        </ChartCard>
-      </div>
-
-      {/* Bid pipeline funnel — counts per stage, straight to the board */}
-      <Link
-        href="/board"
-        className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-line bg-surface px-4 py-3 transition-colors duration-150 hover:border-line-strong"
-      >
-        <span className={`${microLabel} mr-2`}>Bid pipeline</span>
-        {BOARD_STAGES.map((s, i) => {
-          const n = boardCards.filter((b) => b.stage === s).length;
-          return (
-            <span key={s} className="flex items-center gap-2 text-sm">
-              {i > 0 && (
-                <span className="text-fg-soft" aria-hidden="true">
-                  →
-                </span>
-              )}
-              <span className={n > 0 ? "font-medium text-fg" : "text-fg-soft"}>
-                {stageLabel(s)} <span className="tabular-nums">{n}</span>
+      {/* Operational core: what needs attention + the next dates. */}
+      <div className="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
+        <section id="needs-attention">
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-fg">Needs attention</h2>
+            {hasSampleActions && (
+              <span className="rounded-full bg-warm-soft px-2 py-0.5 text-xs font-medium text-warm">
+                Sample data — dev only
               </span>
-            </span>
-          );
-        })}
-        <span className="ml-auto text-xs font-medium text-accent-fg">Open board →</span>
-      </Link>
+            )}
+          </div>
+          {openActions.length > 0 ? (
+            <div className="mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
+              <table className="w-full min-w-[46rem] text-sm">
+                <thead>
+                  <tr className={`border-b border-line text-left ${microLabel}`}>
+                    <th className="px-4 py-2.5">Tender</th>
+                    <th className="px-4 py-2.5">Next action</th>
+                    <th className="px-4 py-2.5">Owner</th>
+                    <th className="px-4 py-2.5">Waiting on</th>
+                    <th className="px-4 py-2.5">Internal due</th>
+                    <th className="px-4 py-2.5">Official deadline</th>
+                    <th className="px-4 py-2.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openActions.map((a) => (
+                    <tr
+                      key={a.id}
+                      className="border-b border-line/60 last:border-0"
+                    >
+                      <td className="max-w-[14rem] px-4 py-3">
+                        {a.tenderId ? (
+                          <Link
+                            href={`/tender/${a.tenderId}`}
+                            className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                            title={a.tenderTitle}
+                          >
+                            {a.tenderTitle}
+                          </Link>
+                        ) : (
+                          <span className="block truncate font-medium text-fg" title={a.tenderTitle}>
+                            {a.tenderTitle}
+                          </span>
+                        )}
+                      </td>
+                      <td className="max-w-[16rem] truncate px-4 py-3 text-fg-mid" title={a.nextAction}>
+                        {a.nextAction}
+                      </td>
+                      <td className="px-4 py-3 text-fg-mid">
+                        {a.owner ?? <span className="font-medium text-warm">Unassigned</span>}
+                      </td>
+                      <td className="px-4 py-3 text-fg-mid">{a.waitingOn ?? "—"}</td>
+                      <td className="px-4 py-3 tabular-nums">
+                        {a.internalDue ? (
+                          isOverdue(a) ? (
+                            <span className="font-semibold text-hot">
+                              {a.internalDue} · Overdue
+                            </span>
+                          ) : (
+                            <span className="text-fg-mid">{a.internalDue}</span>
+                          )
+                        ) : (
+                          <span className="text-fg-soft">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-fg-mid">
+                        {a.officialDeadline ?? "—"}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-xs font-medium ${ACTION_STATUS_CHIP[a.status]}`}
+                        >
+                          {ACTION_STATUS_LABEL[a.status]}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="mt-2.5 rounded-xl border border-line bg-surface px-6 py-10 text-center">
+              <p className="text-sm font-medium text-fg">No operational actions yet.</p>
+              <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-fg-mid">
+                This table tracks the next step per pursuit — who owns it, who
+                you&apos;re waiting for and when it&apos;s due internally.
+              </p>
+              <button
+                disabled
+                className={`${btnSecondary} mt-4`}
+                title="Action tracking lands with the next database iteration (docs/ops-schema-next-iteration.md)"
+              >
+                Add first action
+              </button>
+              <p className="mt-2 text-xs text-fg-soft">
+                Coming with the next iteration — the storage schema is documented
+                and ready.
+              </p>
+            </div>
+          )}
+        </section>
 
-      {/* Deadline calendar for active pursuits */}
-      <div className="mt-5">
-        <ChartCard title="Deadline calendar · next 60 days">
-          <DeadlineCalendar items={calendarItems} horizonDays={60} />
+        <section>
+          <div className="flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-fg">Upcoming milestones</h2>
+            <Link href="/calendar" className="text-xs font-medium text-accent-fg hover:underline">
+              View Calendar →
+            </Link>
+          </div>
+          <div className="mt-2.5 rounded-xl border border-line bg-surface">
+            {upcoming.length > 0 ? (
+              <ul className="divide-y divide-line/60">
+                {upcoming.map((e, i) => (
+                  <li key={`${e.tenderId}-${e.label}-${i}`} className="px-4 py-3">
+                    <div className="flex items-baseline justify-between gap-2">
+                      <span className={`tabular-nums text-sm ${deadlineClass(e.days)}`}>
+                        {e.date}
+                      </span>
+                      <span className="shrink-0 text-xs tabular-nums text-fg-soft">
+                        {/* beyond a year it's a DAS/framework window, not a countdown */}
+                        {e.days === 0 ? "today" : e.days > 365 ? "long-term" : `in ${e.days}d`}
+                      </span>
+                    </div>
+                    <Link
+                      href={`/tender/${e.tenderId}`}
+                      className="mt-0.5 block truncate text-sm font-medium text-fg hover:text-accent-fg hover:underline"
+                      title={e.tenderTitle}
+                    >
+                      {e.tenderTitle}
+                    </Link>
+                    <p className="mt-0.5 flex items-center gap-2 text-xs text-fg-mid">
+                      {e.label}
+                      <span
+                        className={`rounded-full px-1.5 py-0.5 font-medium ${
+                          e.official ? "bg-accent-soft text-accent-fg" : "bg-sunken text-fg-mid"
+                        }`}
+                      >
+                        {e.official ? "Official" : "Internal"}
+                      </span>
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p className="px-4 py-8 text-center text-xs leading-relaxed text-fg-soft">
+                No tracked dates yet. Move a tender into Analysis on the Tender
+                Pipeline, then add its key dates on the tender detail page.
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+
+      {/* Portfolio snapshot — secondary, below the operational core. */}
+      <h2 className={`${microLabel} mt-8`}>Portfolio snapshot</h2>
+      <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)] gap-5 lg:grid-cols-2">
+        <ChartCard title="Open tenders by solution domain">
+          <HBarList rows={byDomain} showPct />
+        </ChartCard>
+        <ChartCard title="Netherlands opportunity map">
+          <NetherlandsMap
+            provinces={provinces}
+            nationalCount={nationalCount}
+            otherRegions={otherRegions}
+            noDataCount={noDataCount}
+          />
         </ChartCard>
       </div>
 
-      {/* Filters — slice the queue below */}
-      <form
-        method="get"
-        className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5"
-      >
-        <span className={`${microLabel} mr-1`}>Filter</span>
-        <select name="label" defaultValue={label} className={selectCls} aria-label="Label">
-          <option value="warmplus">Hot + Warm</option>
-          <option value="all">All labels</option>
-          <option value="Hot">Hot only</option>
-          <option value="Warm">Warm only</option>
-          <option value="Cold">Cold only</option>
-          <option value="Monitor">Monitor only</option>
-        </select>
-        <select name="buyer" defaultValue={buyer} className={selectCls} aria-label="Buyer type">
-          <option value="">Any buyer type</option>
-          {buyerTypes.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-        <select name="due" defaultValue={due} className={selectCls} aria-label="Deadline">
-          <option value="">Any deadline</option>
-          {DUE_BUCKETS.map((b) => (
-            <option key={b.key} value={b.key}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-        <button className={`${btnPrimary} py-1.5`}>Apply</button>
-        {filtersActive && (
-          <Link
-            href="/dashboard"
-            className="text-sm font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
-          >
-            Clear
-          </Link>
-        )}
-      </form>
-
-      {/* Work queue */}
-      <h2 className={`${microLabel} mt-8`}>
-        Work queue · {rows.length} tender{rows.length === 1 ? "" : "s"}
-      </h2>
-      <div className="mt-2 overflow-hidden rounded-xl border border-line bg-surface">
-        <table className="w-full text-sm">
+      {/* Latest qualified — the five newest Hot/Warm, full list in the Inbox. */}
+      <div className="mt-8 flex items-baseline justify-between">
+        <h2 className="text-base font-semibold text-fg">Latest qualified tenders</h2>
+        <Link href="/inbox" className="text-xs font-medium text-accent-fg hover:underline">
+          View all in Tender Inbox →
+        </Link>
+      </div>
+      <div className="mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
+        <table className="w-full min-w-[44rem] text-sm">
           <thead>
             <tr className={`border-b border-line text-left ${microLabel}`}>
               <th className="px-4 py-2.5">Tender</th>
               <th className="px-4 py-2.5">Buyer</th>
-              <th className="px-4 py-2.5">Label</th>
-              <th className="px-4 py-2.5 text-right">Score</th>
+              <th className="px-4 py-2.5">Domain</th>
+              <th className="px-4 py-2.5">Match</th>
               <th className="px-4 py-2.5">Deadline</th>
-              <th className="px-4 py-2.5">Board</th>
+              <th className="px-4 py-2.5">Pipeline</th>
             </tr>
           </thead>
           <tbody>
-            {rows.map((t) => (
+            {latestQualified.map((t) => (
               <tr
                 key={t.id}
                 className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
               >
                 <td className="max-w-sm px-4 py-3">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <Link
-                      href={`/tender/${t.id}`}
-                      className="truncate font-medium text-fg hover:text-accent-fg hover:underline"
-                      title={t.title ?? ""}
-                    >
-                      {t.title}
-                    </Link>
-                    {freshIds.has(t.id) && (
-                      <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-fg">
-                        New
-                      </span>
-                    )}
-                  </div>
+                  <Link
+                    href={`/tender/${t.id}`}
+                    className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                    title={t.title ?? ""}
+                  >
+                    {t.title}
+                  </Link>
                 </td>
-                <td
-                  className="max-w-[14rem] truncate px-4 py-3 text-fg-mid"
-                  title={t.buyer ?? ""}
-                >
+                <td className="max-w-[12rem] truncate px-4 py-3 text-fg-mid" title={t.buyer ?? ""}>
                   {t.buyer}
                 </td>
+                <td className="px-4 py-3 text-fg-mid">{domainOf(t)}</td>
                 <td className="px-4 py-3">
+                  {/* Match = qualification label; the numeric score stays on the detail page */}
                   <LabelChip label={t.label} />
                 </td>
-                <td className="px-4 py-3 text-right font-semibold tabular-nums">
-                  {t.score}
-                </td>
-                <td
-                  className={`px-4 py-3 tabular-nums ${deadlineClass(t.days_to_deadline)}`}
-                >
+                <td className={`px-4 py-3 tabular-nums ${deadlineClass(t.days_to_deadline)}`}>
                   {deadlineText(t.deadline, t.days_to_deadline)}
                 </td>
                 <td className="px-4 py-3 text-xs text-fg-soft">
@@ -434,12 +446,11 @@ export default async function DashboardPage({
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && (
+            {latestQualified.length === 0 && (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-sm text-fg-soft">
-                  {filtersActive
-                    ? "No open tenders match these filters."
-                    : "No open Warm+ tenders right now. The scraper runs daily at 09:00."}
+                <td colSpan={6} className="px-4 py-10 text-center text-sm text-fg-soft">
+                  No open Hot or Warm tenders right now. The scraper runs daily
+                  at 09:00 — new qualifiers appear here first.
                 </td>
               </tr>
             )}
