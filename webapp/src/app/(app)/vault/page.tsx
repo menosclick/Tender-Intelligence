@@ -43,6 +43,12 @@ function fmtDate(iso: string | null): string {
   return iso ? iso.slice(0, 10) : "";
 }
 
+// external_platform_url is written by the AI verdict step from third-party
+// document text — an untrusted writer. Only ever link http(s).
+function safeHttpUrl(url: unknown): string | null {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
 // Working stages first (in lifecycle order), then everything else.
 const STAGE_ORDER: Record<string, number> = {
   Identified: 0,
@@ -135,9 +141,18 @@ export default async function VaultPage() {
   const inPipeline = rows.filter((r) => r.stageRank <= 9);
   const offBoard = rows.filter((r) => r.stageRank === 10);
 
-  const docCount = (docs ?? []).length;
-  const packCount = (packs ?? []).length;
-  const verdictCount = (verdicts ?? []).length;
+  // Header counts describe what the page actually shows: only artifacts of
+  // tenders the view still qualifies. A tender re-labelled Disqualified keeps
+  // its rows in the artifact tables but loses its card — the difference is
+  // stated below, never silently absorbed into the totals.
+  const renderedIds = new Set((tenders ?? []).map((t) => t.id));
+  const docCount = (docs ?? []).filter((d) => renderedIds.has(d.tender_id)).length;
+  const packCount = (packs ?? []).filter((p) => renderedIds.has(p.tender_id)).length;
+  const verdictCount = (verdicts ?? []).filter((v) => renderedIds.has(v.tender_id)).length;
+  const hiddenCount =
+    (docs?.length ?? 0) - docCount +
+    ((packs?.length ?? 0) - packCount) +
+    ((verdicts?.length ?? 0) - verdictCount);
 
   const renderCard = (t: (typeof rows)[number]["t"]) => {
     const tDocs = docsByTender.get(t.id) ?? [];
@@ -213,11 +228,11 @@ export default async function VaultPage() {
           ) : verdict?.verdict === "docs_unavailable" ? (
             <p className="text-sm text-fg-mid">
               Not hosted on TenderNed — the files live on an external platform.
-              {verdict.external_platform_url && (
+              {safeHttpUrl(verdict.external_platform_url) && (
                 <>
                   {" "}
                   <a
-                    href={verdict.external_platform_url}
+                    href={safeHttpUrl(verdict.external_platform_url)!}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="font-medium text-accent-fg hover:underline"
@@ -313,7 +328,11 @@ export default async function VaultPage() {
           docCount === 1 ? "document" : "documents"
         } listed · ${packCount} bid ${packCount === 1 ? "pack" : "packs"} · ${verdictCount} ${
           verdictCount === 1 ? "verdict" : "verdicts"
-        }. Files stay on TenderNed; the vault links to the source.`}
+        }. Files stay on TenderNed; the vault links to the source.${
+          hiddenCount > 0
+            ? ` ${hiddenCount} ${hiddenCount === 1 ? "artifact belongs" : "artifacts belong"} to tenders no longer qualified and ${hiddenCount === 1 ? "is" : "are"} hidden.`
+            : ""
+        }`}
       />
 
       {rows.length === 0 ? (

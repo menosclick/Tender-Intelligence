@@ -247,7 +247,11 @@ export default async function TenderDetailPage({
               {verdict.summary}
             </p>
           )}
-          {verdict.verdict === "docs_unavailable" && verdict.external_platform_url && (
+          {/* external_platform_url is AI-written from third-party document text
+              (untrusted writer) — only ever link http(s). */}
+          {verdict.verdict === "docs_unavailable" &&
+            typeof verdict.external_platform_url === "string" &&
+            /^https?:\/\//i.test(verdict.external_platform_url) && (
             <a
               href={verdict.external_platform_url}
               target="_blank"

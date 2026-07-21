@@ -6,6 +6,12 @@
 > `getOperationalActions(admin)` reads the table, the dashboard form works.
 > This doc remains as the design record. Still open from below: the NUTS
 > location view.
+>
+> **2026-07-21 (later):** the vault/extraction iteration added two more
+> app-read tables — `tender_documents` + `milestone_extractions` (migration
+> `tender_documents_and_milestone_extractions`), written only by n8n workflow
+> `oRYeERPLQ9H2EQ4G` (Leidraad Milestone Extractor). The NUTS view remains
+> the only open schema item.
 
 Written 2026-07-21 during the Tender Command Center iteration. The dashboard's
 "Needs Attention" section and the "Waiting on Others" / "Actions Due This Week"

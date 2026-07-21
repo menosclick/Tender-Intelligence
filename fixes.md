@@ -185,3 +185,20 @@ Main fast-forwarded 02ad657 → 36751fb, pushed. Vercel production deployment `d
 ## 2026-07-21 (7) — tender_actions PROMOTED TO PRODUCTION (Derson: "aprobado")
 
 Main fast-forwarded 902308d → 94a3449, pushed. Production deployment lwpj42py0 **Ready**, target=production, prod /login 200. Needs Attention is now a working loop in the live app: add form, Done/Remove, Waiting/Overdue inference, deadline join — verified pre-merge with 17/17 E2E checks (see previous entry).
+
+## 2026-07-21 (8) — Month-grid Calendar + Document Vault + Leidraad Milestone Extractor (branch feature/vault-calendar-extraction)
+
+**What was built (Derson: "Lets go to this: Document Vault, month-grid Calendar, and the leidraad milestone auto-extraction"):**
+
+1. **Month-grid Calendar** — real Monday-first month view (`calendar/month-grid.tsx`), `?m=YYYY-MM` nav (back blocked before current month, forward capped at last tracked month within 12; DAS dates stay in the list as "long-term"), today marker, per-day chips (submission/official/internal tint + label text + source in tooltip). `DeadlineCalendar` + `Columns` deleted from viz.tsx (zero callers).
+2. **Document Vault** — real page: per-tender document list (name/category/size/"read by AI"), verdict chip + summary, bid-pack deep link (`/tender/[id]#bid-pack` anchor added), honest empty states (external platform / manual / no docs, with "checked <date>"). Powered by new tables.
+3. **Leidraad Milestone Extractor** — NEW n8n workflow `oRYeERPLQ9H2EQ4G` (21 nodes, separate from the prod monolith): daily 09:45 AMS + manual; for pipeline tenders (Analysis/Q&A/Submitted/Award, TenderNed platform, not yet ledgered) fetches the TenderNed doc list, stores metadata in `tender_documents`, reads up to 2 leidraad PDFs, GPT-4o (json_schema strict) extracts the planning table into `tender_milestones` with `source='documents'` via **ON CONFLICT DO NOTHING** (manual always wins, GOLDEN RULE kept), ledger row in `milestone_extractions` (re-extract = delete ledger row), Slack DM per tender, errorWorkflow `fs7DKAix5cDLc8vA`, TZ Europe/Amsterdam.
+   Migration: `tender_documents_and_milestone_extractions` (RLS SELECT authenticated; writes only via n8n service creds).
+
+**Verification (real output):**
+- Extractor exec 11426: 3 candidates → PAM/IGA (6169) **6 milestones** from Selectiedocument (publication 2026-06-29 … objection_period_end 2026-11-11, Dutch planning quotes in notes); Identity mgmt (5784) correctly ledgered `no_docs` (DAS); ESM picked wrong docs (annexes — English tender). Heuristic fixed (English main-doc names + size rank), ledger reset, exec 11427: ESM **7 milestones** from "Request for ESM Platform" + "Memorandum of Information 1" — extracted submission 2026-08-12 **matches TenderNed's official deadline** (cross-validation). DB: 13 `source='documents'` milestones, 34 `tender_documents` rows, 3 ledger rows — confirmed by SQL.
+- Webapp E2E (throwaway user via admin API, real login, deleted after — 404 confirmed): **36/36 PASS ×2** (before and after review fixes) incl. July honest-empty grid, Aug/Oct chips from extracted milestones, forward-cap at Nov, vault counts 34/5/4, read-by-AI markers, no-docs/manual/external states, `from documents` chips ×6 on tender 6169, mobile 390px zero overflow. Screenshots: `docs/vault-calendar-shots-2026-07-21/` (01–08).
+- `tsc --noEmit` clean, `next build` green ×2.
+- Fresh-eyes adversarial review (probed live DB itself): verdict **SHIP, 0 blockers**; 2 SHOULD-FIX applied (http(s)-scheme guard on AI-written `external_platform_url` in vault + detail; vault header counts scoped to rendered tenders with explicit "N artifacts hidden" note) + chip tooltip now carries official/internal source. NITs documented: UTC-vs-local today-ring (consistent on Vercel), unbounded `tender_documents` read vs PostgREST 1000 cap (~60 tenders away), hand-typed far-future `?m=` renders blank-but-honest.
+
+**NOT yet in prod:** webapp changes on branch (not merged), extractor workflow **left unpublished** (draft — no daily runs yet). Both promote together on Derson's aprobado.

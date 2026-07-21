@@ -149,7 +149,9 @@ export function MonthGrid({
                           <Link
                             key={`${e.tenderId}-${e.label}-${i}`}
                             href={`/tender/${e.tenderId}`}
-                            title={`${e.label} — ${e.tenderTitle} (${e.date})`}
+                            title={`${e.label} — ${e.tenderTitle} (${e.date}) · ${
+                              e.hot ? "Submission" : e.official ? "Official date" : "Internal date"
+                            }`}
                             className={`block truncate rounded px-1.5 py-0.5 text-xs font-medium hover:opacity-80 ${chipClass(e)}`}
                           >
                             {e.label} · {e.tenderTitle}
