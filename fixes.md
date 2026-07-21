@@ -145,3 +145,9 @@ The morning commit 9991d2a (Key dates section on tender detail feeding the dashb
 **E2E round 2 (16/16 PASS):** milestone on tender 6760 (Submitted, deadline passed 2026-06-23) NOW APPEARS on the calendar; 4-milestone cluster renders with ZERO pairwise label overlaps (getBoundingClientRect assertion); "+1 more" collapse and "(long-term)" verified; form offers no TenderNed-owned kinds; all test rows removed via UI. Reviewer re-verified the fix diff: explicit SIGN-OFF, no regressions.
 
 **State:** `next build` clean ×3 · tender_milestones residue 0 (query) · both throwaway users deleted (admin API 404) · shots in `docs/milestone-shots-2026-07-21/` (12) · branch pushed, Vercel preview dpl_4jpuJ4hHRFooZvKMyAQTunQwefwD Ready, /login 200. NOT in prod — promotion pending Derson's OK.
+
+---
+
+## 2026-07-21 (3) — Milestone feature PROMOTED TO PRODUCTION (Derson: "aprobado")
+
+Main fast-forwarded 1f617f9 → f413d62, pushed. Vercel production deployment `dpl_H9oA1jQhy2eC7aWqYEBnFg33wec9` **Ready**, target=production, aliased to `cba-tender-intelligence.vercel.app` (verified via `vercel inspect`). Prod `/login` → HTTP 200. Same commit fully verified pre-merge: 2 E2E rounds with real login (32 checks total), fresh-eyes reviewer sign-off, zero test residue (see previous two entries).
