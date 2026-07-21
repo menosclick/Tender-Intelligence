@@ -217,6 +217,77 @@ export async function removeMilestone(milestoneId: number, tenderId: number) {
   revalidatePath("/dashboard");
 }
 
+// ---- Operational actions: the Needs Attention loop ----
+
+const ACTION_STATUSES = ["open", "in_progress", "waiting", "blocked", "completed"];
+
+// Reject impossible dates (Feb 31 round-trips to a different day) and typo years.
+function isRealDate(date: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return false;
+  const [y, mo, d] = [+m[1], +m[2], +m[3]];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  return (
+    y >= 2000 &&
+    y <= 2100 &&
+    dt.getUTCFullYear() === y &&
+    dt.getUTCMonth() === mo - 1 &&
+    dt.getUTCDate() === d
+  );
+}
+
+export async function addAction(formData: FormData) {
+  const user = await requireUser();
+  const title = String(formData.get("title") ?? "").trim().slice(0, 200);
+  if (!title) throw new Error("Action title is required");
+  const tenderRaw = String(formData.get("tender_id") ?? "").trim();
+  const tenderId = tenderRaw ? Number.parseInt(tenderRaw, 10) : null;
+  if (tenderRaw && !Number.isInteger(tenderId)) throw new Error("Invalid tender");
+  const opt = (k: string) => String(formData.get(k) ?? "").trim().slice(0, 120) || null;
+  const owner = opt("owner");
+  const waitingOn = opt("waiting_on");
+  const due = String(formData.get("internal_due") ?? "").trim();
+  if (due && !isRealDate(due)) throw new Error("Invalid date");
+
+  const admin = createSupabaseAdmin();
+  const { error } = await admin.from("tender_actions").insert({
+    tender_id: tenderId,
+    title,
+    owner,
+    waiting_on: waitingOn,
+    internal_due: due || null,
+    // Naming who you wait for IS the waiting state — no separate toggle.
+    status: waitingOn ? "waiting" : "open",
+    created_by: user.email,
+  });
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function setActionStatus(actionId: number, status: string) {
+  await requireUser();
+  if (!ACTION_STATUSES.includes(status)) throw new Error("Invalid status");
+  const admin = createSupabaseAdmin();
+  const { error } = await admin
+    .from("tender_actions")
+    .update({
+      status,
+      updated_at: new Date().toISOString(),
+      completed_at: status === "completed" ? new Date().toISOString() : null,
+    })
+    .eq("id", actionId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
+export async function deleteAction(actionId: number) {
+  await requireUser();
+  const admin = createSupabaseAdmin();
+  const { error } = await admin.from("tender_actions").delete().eq("id", actionId);
+  if (error) throw new Error(error.message);
+  revalidatePath("/dashboard");
+}
+
 // ---- Learning loop: capture the human signal ----
 
 export async function recordFeedback(

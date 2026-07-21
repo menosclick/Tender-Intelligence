@@ -1,11 +1,11 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
+
 // Operational-actions layer for the Tender Command Center.
 //
-// The database has NO actions / waiting-on / internal-due schema yet — the
-// fields it will need are documented in docs/ops-schema-next-iteration.md.
-// This module is the thin typed seam the dashboard reads through today:
-// production returns an empty list (the dashboard shows its teaching empty
-// state); development returns clearly-labelled sample rows so the layout can
-// be exercised. Sample rows are synthetic and are never real tender data.
+// Backed by the app-owned `tender_actions` table (migration
+// tender_actions_for_needs_attention, 2026-07-21 — designed in
+// docs/ops-schema-next-iteration.md). The official deadline is never stored
+// here; it joins from v_app_tenders so it can't drift from the tender.
 
 export type ActionStatus =
   | "open"
@@ -15,16 +15,15 @@ export type ActionStatus =
   | "completed";
 
 export type TenderAction = {
-  id: string;
+  id: number;
   tenderId: number | null; // links to /tender/[id] when set
-  tenderTitle: string;
+  tenderTitle: string; // "General" for non-tender ops work
   nextAction: string;
   owner: string | null;
   waitingOn: string | null; // person or organisation we are blocked on
   internalDue: string | null; // YYYY-MM-DD
-  officialDeadline: string | null; // YYYY-MM-DD
+  officialDeadline: string | null; // joined from the tender
   status: ActionStatus;
-  sample: boolean;
 };
 
 export const ACTION_STATUS_LABEL: Record<ActionStatus, string> = {
@@ -45,58 +44,38 @@ export const ACTION_STATUS_CHIP: Record<ActionStatus, string> = {
   completed: "bg-ok-soft text-ok",
 };
 
-function iso(offsetDays: number): string {
-  const d = new Date(Date.now() + offsetDays * 86400000);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
+// Open (non-completed) actions with tender title + official deadline joined.
+export async function getOperationalActions(
+  admin: SupabaseClient
+): Promise<TenderAction[]> {
+  const { data: rows } = await admin
+    .from("tender_actions")
+    .select("id,tender_id,title,owner,waiting_on,internal_due,status")
+    .neq("status", "completed")
+    .order("internal_due", { ascending: true, nullsFirst: false })
+    .limit(200);
 
-// Synthetic layout-exercise rows (dev only). Titles are obviously fake and
-// each row is flagged sample so the UI labels the whole section.
-function sampleActions(): TenderAction[] {
-  return [
-    {
-      id: "sample-1",
-      tenderId: null,
-      tenderTitle: "[SAMPLE] ITSM tender — Gemeente Voorbeeld",
-      nextAction: "Draft answers for the Nota van Inlichtingen",
-      owner: "Derson",
-      waitingOn: null,
-      internalDue: iso(-2),
-      officialDeadline: iso(12),
-      status: "in_progress",
-      sample: true,
-    },
-    {
-      id: "sample-2",
-      tenderId: null,
-      tenderTitle: "[SAMPLE] PAM tender — Provincie Voorbeeld",
-      nextAction: "Confirm reseller pricing for the bid",
-      owner: "Derson",
-      waitingOn: "ProtinusIT",
-      internalDue: iso(3),
-      officialDeadline: iso(21),
-      status: "waiting",
-      sample: true,
-    },
-    {
-      id: "sample-3",
-      tenderId: null,
-      tenderTitle: "[SAMPLE] Monitoring tender — Waterschap Voorbeeld",
-      nextAction: "Legal review of the concept contract",
-      owner: null,
-      waitingOn: null,
-      internalDue: iso(6),
-      officialDeadline: iso(30),
-      status: "open",
-      sample: true,
-    },
+  const ids = [
+    ...new Set((rows ?? []).map((r) => r.tender_id).filter((v): v is number => v != null)),
   ];
-}
+  const { data: tenders } = ids.length
+    ? await admin.from("v_app_tenders").select("id,title,deadline").in("id", ids)
+    : { data: [] as { id: number; title: string | null; deadline: string | null }[] };
+  const tMap = new Map((tenders ?? []).map((t) => [t.id, t]));
 
-export async function getOperationalActions(): Promise<TenderAction[]> {
-  // No persistence yet — see docs/ops-schema-next-iteration.md.
-  if (process.env.NODE_ENV === "development") return sampleActions();
-  return [];
+  return (rows ?? []).map((r) => ({
+    id: r.id,
+    tenderId: r.tender_id,
+    tenderTitle: r.tender_id
+      ? tMap.get(r.tender_id)?.title ?? `Tender #${r.tender_id}`
+      : "General",
+    nextAction: r.title,
+    owner: r.owner,
+    waitingOn: r.waiting_on,
+    internalDue: r.internal_due,
+    officialDeadline: r.tender_id ? tMap.get(r.tender_id)?.deadline ?? null : null,
+    status: r.status as ActionStatus,
+  }));
 }
 
 // ---- Priority sort (spec order) ----

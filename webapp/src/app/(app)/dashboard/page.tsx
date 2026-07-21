@@ -4,6 +4,7 @@ import { deadlineText, deadlineClass, stageLabel, asArray } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList } from "@/lib/viz";
+import { addAction, setActionStatus, deleteAction } from "@/lib/actions";
 import { getMilestoneEvents } from "@/lib/calendar-data";
 import {
   getOperationalActions,
@@ -35,7 +36,9 @@ type Row = {
   recommended_products: unknown;
 };
 
-const ACTIVE_STAGES = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
+// inputCls minus w-full: compact inline controls for the one-row add form.
+const fieldCls =
+  "rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg placeholder:text-fg-soft transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
 
 // The command center answers four questions, in order: what needs attention
 // now, what's the next important deadline, who are we waiting for, and what
@@ -55,7 +58,7 @@ export default async function DashboardPage() {
         .order("score", { ascending: false }),
       admin.from("tender_feedback").select("tender_id,value").eq("kind", "relevance"),
       admin.from("bid_pipeline").select("tender_id,stage"),
-      getOperationalActions(),
+      getOperationalActions(admin),
       getMilestoneEvents(admin),
     ]);
 
@@ -82,7 +85,16 @@ export default async function DashboardPage() {
   const openActions = sortedActions.filter((a) => a.status !== "completed");
   const waitingCount = openActions.filter((a) => a.waitingOn).length;
   const dueThisWeekCount = openActions.filter(isDueThisWeek).length;
-  const hasSampleActions = actions.some((a) => a.sample);
+
+  // Active pipeline tenders populate the add-form's tender picker.
+  const pipelineIds = activePipeline.map((b) => b.tender_id);
+  const { data: pipelineTenders } = pipelineIds.length
+    ? await admin
+        .from("v_app_tenders")
+        .select("id,title")
+        .in("id", pipelineIds)
+        .order("title")
+    : { data: [] as { id: number; title: string | null }[] };
 
   // Extras for domain classification, recency and the map (small .in() reads).
   const ids = openRows.map((t) => t.id);
@@ -232,16 +244,11 @@ export default async function DashboardPage() {
       {/* Operational core: what needs attention + the next dates. */}
       <div className="mt-6 grid grid-cols-[minmax(0,1fr)] items-start gap-5 lg:grid-cols-[minmax(0,7fr)_minmax(0,3fr)]">
         <section id="needs-attention">
-          <div className="flex items-baseline justify-between">
-            <h2 className="text-base font-semibold text-fg">Needs attention</h2>
-            {hasSampleActions && (
-              <span className="rounded-full bg-warm-soft px-2 py-0.5 text-xs font-medium text-warm">
-                Sample data — dev only
-              </span>
-            )}
-          </div>
+          <h2 className="text-base font-semibold text-fg">Needs attention</h2>
           {openActions.length > 0 ? (
-            <div className="mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
+            // relative: the sr-only header is position:absolute — without a
+            // positioned ancestor it becomes phantom scroll area on mobile.
+            <div className="relative mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
               <table className="w-full min-w-[46rem] text-sm">
                 <thead>
                   <tr className={`border-b border-line text-left ${microLabel}`}>
@@ -250,8 +257,11 @@ export default async function DashboardPage() {
                     <th className="px-4 py-2.5">Owner</th>
                     <th className="px-4 py-2.5">Waiting on</th>
                     <th className="px-4 py-2.5">Internal due</th>
-                    <th className="px-4 py-2.5">Official deadline</th>
+                    <th className="px-4 py-2.5">Deadline</th>
                     <th className="px-4 py-2.5">Status</th>
+                    <th className="px-4 py-2.5">
+                      <span className="sr-only">Row actions</span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -260,7 +270,7 @@ export default async function DashboardPage() {
                       key={a.id}
                       className="border-b border-line/60 last:border-0"
                     >
-                      <td className="max-w-[14rem] px-4 py-3">
+                      <td className="max-w-[13rem] px-4 py-3">
                         {a.tenderId ? (
                           <Link
                             href={`/tender/${a.tenderId}`}
@@ -275,7 +285,7 @@ export default async function DashboardPage() {
                           </span>
                         )}
                       </td>
-                      <td className="max-w-[16rem] truncate px-4 py-3 text-fg-mid" title={a.nextAction}>
+                      <td className="max-w-[15rem] truncate px-4 py-3 text-fg-mid" title={a.nextAction}>
                         {a.nextAction}
                       </td>
                       <td className="px-4 py-3 text-fg-mid">
@@ -305,31 +315,79 @@ export default async function DashboardPage() {
                           {ACTION_STATUS_LABEL[a.status]}
                         </span>
                       </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-2">
+                          <form action={setActionStatus.bind(null, a.id, "completed")}>
+                            <button
+                              className="text-xs font-medium text-accent-fg transition-colors duration-150 hover:underline"
+                              title="Mark this action completed"
+                            >
+                              Done
+                            </button>
+                          </form>
+                          <form action={deleteAction.bind(null, a.id)}>
+                            <button
+                              className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-hot"
+                              aria-label={`Remove action: ${a.nextAction}`}
+                            >
+                              Remove
+                            </button>
+                          </form>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
           ) : (
-            <div className="mt-2.5 rounded-xl border border-line bg-surface px-6 py-10 text-center">
+            <div className="mt-2.5 rounded-xl border border-line bg-surface px-6 py-8 text-center">
               <p className="text-sm font-medium text-fg">No operational actions yet.</p>
               <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-fg-mid">
                 This table tracks the next step per pursuit — who owns it, who
-                you&apos;re waiting for and when it&apos;s due internally.
-              </p>
-              <button
-                disabled
-                className={`${btnSecondary} mt-4`}
-                title="Action tracking lands with the next database iteration (docs/ops-schema-next-iteration.md)"
-              >
-                Add first action
-              </button>
-              <p className="mt-2 text-xs text-fg-soft">
-                Coming with the next iteration — the storage schema is documented
-                and ready.
+                you&apos;re waiting for and when it&apos;s due internally. Add
+                the first one below.
               </p>
             </div>
           )}
+          <form action={addAction} className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              name="title"
+              required
+              maxLength={200}
+              placeholder="Next action (e.g. Draft NvI answers)"
+              aria-label="Action"
+              className={`${fieldCls} min-w-52 flex-1`}
+            />
+            <select name="tender_id" aria-label="Tender" className={fieldCls} defaultValue="">
+              <option value="">No tender — general</option>
+              {(pipelineTenders ?? []).map((t) => (
+                <option key={t.id} value={t.id}>
+                  {(t.title ?? `Tender #${t.id}`).slice(0, 60)}
+                </option>
+              ))}
+            </select>
+            <input
+              name="owner"
+              maxLength={120}
+              placeholder="Owner"
+              aria-label="Owner"
+              className={`${fieldCls} w-28`}
+            />
+            <input
+              name="waiting_on"
+              maxLength={120}
+              placeholder="Waiting on"
+              aria-label="Waiting on"
+              className={`${fieldCls} w-32`}
+            />
+            <input type="date" name="internal_due" aria-label="Internal due date" className={fieldCls} />
+            <button className={btnSecondary}>Add action</button>
+          </form>
+          <p className="mt-2 text-xs leading-relaxed text-fg-soft">
+            Naming who you&apos;re waiting on sets the action to Waiting; a
+            past internal date surfaces it as Overdue at the top.
+          </p>
         </section>
 
         <section>

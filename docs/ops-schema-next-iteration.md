@@ -1,5 +1,12 @@
 # Operational actions — database fields needed next iteration
 
+> **IMPLEMENTED 2026-07-21** (same day, on Derson's go-ahead after he hit the
+> placeholder button): migration `tender_actions_for_needs_attention` applied,
+> server actions `addAction`/`setActionStatus`/`deleteAction` live,
+> `getOperationalActions(admin)` reads the table, the dashboard form works.
+> This doc remains as the design record. Still open from below: the NUTS
+> location view.
+
 Written 2026-07-21 during the Tender Command Center iteration. The dashboard's
 "Needs Attention" section and the "Waiting on Others" / "Actions Due This Week"
 metrics currently read through the typed seam in `webapp/src/lib/ops.ts`, which
