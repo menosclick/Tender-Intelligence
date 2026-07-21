@@ -151,3 +151,15 @@ The morning commit 9991d2a (Key dates section on tender detail feeding the dashb
 ## 2026-07-21 (3) — Milestone feature PROMOTED TO PRODUCTION (Derson: "aprobado")
 
 Main fast-forwarded 1f617f9 → f413d62, pushed. Vercel production deployment `dpl_H9oA1jQhy2eC7aWqYEBnFg33wec9` **Ready**, target=production, aliased to `cba-tender-intelligence.vercel.app` (verified via `vercel inspect`). Prod `/login` → HTTP 200. Same commit fully verified pre-merge: 2 E2E rounds with real login (32 checks total), fresh-eyes reviewer sign-off, zero test residue (see previous two entries).
+
+---
+
+## 2026-07-21 (4) — Tender Command Center iteration (branch feature/command-center-2026-07-21)
+
+Per Derson''s written spec: nav restructure (8 items, Bid Board → Tender Pipeline everywhere), dashboard rebuilt as an operational command center (5 linked metric cells, Needs Attention via typed ops seam — empty in prod, labelled samples in dev, schema doc''d in docs/ops-schema-next-iteration.md; Upcoming Milestones next-5 with Official/Internal chips; Portfolio Snapshot = domain bars with % linking into Inbox + schematic NL province map from publication NUTS codes, never buyer addresses; Latest Qualified 5 newest Hot/Warm), full discovery table moved to /inbox (search + label/domain/buyer/deadline filters + per-row Add-to-pipeline / Hide actions), /calendar (60-day timeline relocated + dated list), /vault honest stub. Mobile: rail collapses to a top bar (dot + last scrape + sign out), sections stack, tables scroll internally.
+
+**Bugs found & fixed during verification:** sr-only table header without positioned ancestor created phantom horizontal scroll on mobile (fix: relative on the scroll wrapper); "in 2896d" resurfaced in two new surfaces (→ long-term); mobile shell previously unusable under 1024px.
+
+**Fresh-eyes review: 0 blockers, 10 nits** — 4 fixed now (dl content model on linked KPIs, Active Pipeline exclusion-list, "qualified" copy mismatch, mobile header sign-out/health), 6 documented for next iteration (query caps vs PostgREST 1000-row silent truncation, NUTS view instead of raw_json fetch, KPI↔calendar population question, not-relevant pipeline-tender consistency, Columns dead code, evidence-hygiene process note).
+
+**Validation:** tsc exit 0 · next build clean · 48 prod E2E checks + 5 dev checks with real login (desktop 1440 + mobile 390), Search/Reports/Learning/Pipeline verified intact · zero test residue (throwaway users deleted, 404-verified ×2) · shots in docs/command-center-shots-2026-07-21/. No ESLint config and no test suite exist in the repo (reported as-is). Preview gkv0jia5z Ready, /login 200. NOT in prod — promotion pending Derson''s OK.
