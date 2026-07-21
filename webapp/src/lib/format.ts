@@ -145,6 +145,15 @@ export function milestoneLabel(kind: string): string {
   return MILESTONE_KINDS.find((k) => k.key === kind)?.label ?? kind;
 }
 
+// Kinds TenderNed itself publishes. The scraped row is authoritative for these
+// and the app never edits scraper-owned data, so offering them in the manual
+// add form would promise a correction that can't take effect. They stay in
+// MILESTONE_KINDS for the document-extraction pipeline.
+const TENDERNED_OWNED = ["publication", "question_deadline", "submission_deadline"];
+export const MANUAL_MILESTONE_KINDS = MILESTONE_KINDS.filter(
+  (k) => !TENDERNED_OWNED.includes(k.key)
+);
+
 // The real tender lifecycle (DB migration bid_pipeline_stages_tender_lifecycle,
 // approved 2026-07-21): working stages Identified → Analysis → Q&A → Submitted
 // → Award, terminals Won / Lost / Dropped.

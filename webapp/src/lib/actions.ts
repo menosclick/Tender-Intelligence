@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
-import { BOARD_STAGES, MILESTONE_KINDS, type BoardStage } from "@/lib/format";
+import { BOARD_STAGES, MANUAL_MILESTONE_KINDS, type BoardStage } from "@/lib/format";
 
 // GOLDEN RULE: the app writes to bid_pipeline, tender_feedback and
 // tender_milestones, and may INSERT new rows into tenders_scraped ONLY with
@@ -166,11 +166,26 @@ export async function createManualTender(formData: FormData) {
 export async function addMilestone(tenderId: number, formData: FormData) {
   await requireUser();
   const kind = String(formData.get("kind") ?? "");
-  if (!MILESTONE_KINDS.some((k) => k.key === kind))
+  // Only kinds the form offers: TenderNed-owned kinds (publication, question/
+  // submission deadline) come from the scraped row and can't be corrected here.
+  if (!MANUAL_MILESTONE_KINDS.some((k) => k.key === kind))
     throw new Error("Invalid milestone kind");
   const date = String(formData.get("date") ?? "").trim();
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error("Invalid date");
-  const note = String(formData.get("note") ?? "").trim() || null;
+  const dm = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!dm) throw new Error("Invalid date");
+  // Reject impossible dates (Feb 31 round-trips to a different day) and typo
+  // years — a 3026 milestone would sort as "long-term" forever.
+  const [y, mo, d] = [+dm[1], +dm[2], +dm[3]];
+  const dt = new Date(Date.UTC(y, mo - 1, d));
+  if (
+    y < 2000 ||
+    y > 2100 ||
+    dt.getUTCFullYear() !== y ||
+    dt.getUTCMonth() !== mo - 1 ||
+    dt.getUTCDate() !== d
+  )
+    throw new Error("Invalid date");
+  const note = String(formData.get("note") ?? "").trim().slice(0, 120) || null;
 
   const admin = createSupabaseAdmin();
   // One row per (tender, kind): re-adding a kind corrects its date/note.

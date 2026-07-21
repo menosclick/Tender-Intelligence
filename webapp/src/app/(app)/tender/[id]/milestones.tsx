@@ -1,5 +1,5 @@
 import { addMilestone, removeMilestone } from "@/lib/actions";
-import { MILESTONE_KINDS, milestoneLabel, daysUntil, deadlineClass } from "@/lib/format";
+import { MANUAL_MILESTONE_KINDS, milestoneLabel, daysUntil, deadlineClass } from "@/lib/format";
 import { btnSecondary, microLabel } from "@/lib/ui";
 
 // inputCls minus w-full: compact inline controls for the one-row add form.
@@ -79,7 +79,7 @@ export function MilestonesSection({
           className={`flex flex-wrap items-center gap-2 ${rows.length > 0 ? "mt-3" : ""}`}
         >
           <select name="kind" required aria-label="Milestone kind" className={fieldCls}>
-            {MILESTONE_KINDS.map((k) => (
+            {MANUAL_MILESTONE_KINDS.map((k) => (
               <option key={k.key} value={k.key}>
                 {k.label}
               </option>
@@ -98,7 +98,8 @@ export function MilestonesSection({
         <p className="mt-2 text-xs leading-relaxed text-fg-soft">
           Dates from the buyer&apos;s planning (NvI, demo, award). They show on the
           dashboard deadline calendar once this tender is in Analysis or later;
-          adding a kind again corrects its date.
+          adding a kind again corrects its date. Submission and question
+          deadlines are tracked automatically from TenderNed.
         </p>
       </div>
     </section>

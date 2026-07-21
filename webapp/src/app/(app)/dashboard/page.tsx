@@ -105,18 +105,21 @@ export default async function DashboardPage({
   const hiddenCount = openAll.length - openRows.length;
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
 
+  // The calendar is driven by BOARD STAGE, not by the open-tenders query: a
+  // Submitted/Award tender leaves openRows the day its deadline passes, but
+  // that's exactly when demo/award/objection dates still need tracking. Fetch
+  // those tenders by id, unfiltered on deadline. Not-relevant stays hidden.
+  const calendarIds = boardCards
+    .filter((b) => CALENDAR_STAGES.includes(b.stage) && !notRelevantIds.has(b.tender_id))
+    .map((b) => b.tender_id);
   // Keyword provenance + question deadline live on the base table (small .in()).
-  // Milestones only matter for the calendar, so that query is scoped to the
-  // tenders in a calendar stage.
-  const calendarIds = openRows
-    .filter((t) => t.pipeline_stage && CALENDAR_STAGES.includes(t.pipeline_stage))
-    .map((t) => t.id);
-  const [{ data: extras }, { data: msRows }] = await Promise.all([
-    openRows.length
+  const extrasIds = [...new Set([...openRows.map((t) => t.id), ...calendarIds])];
+  const [{ data: extras }, { data: msRows }, { data: calRowsRaw }] = await Promise.all([
+    extrasIds.length
       ? admin
           .from("tenders_scraped")
           .select("id,keyword_matches,deadline_vragen")
-          .in("id", openRows.map((t) => t.id))
+          .in("id", extrasIds)
       : { data: [] as { id: number; keyword_matches: string[] | null; deadline_vragen: string | null }[] },
     calendarIds.length
       ? admin
@@ -124,6 +127,12 @@ export default async function DashboardPage({
           .select("tender_id,kind,milestone_date,note")
           .in("tender_id", calendarIds)
       : { data: [] as { tender_id: number; kind: string; milestone_date: string; note: string | null }[] },
+    calendarIds.length
+      ? admin
+          .from("v_app_tenders")
+          .select("id,title,deadline,days_to_deadline")
+          .in("id", calendarIds)
+      : { data: [] as { id: number; title: string | null; deadline: string | null; days_to_deadline: number | null }[] },
   ]);
   const extrasById = new Map((extras ?? []).map((e) => [e.id, e]));
   const msByTender = new Map<number, { kind: string; milestone_date: string; note: string | null }[]>();
@@ -202,8 +211,7 @@ export default async function DashboardPage({
   // dates (question deadline, submission) come from the scraped row and stay
   // authoritative; tender_milestones fills in the rest of the lifecycle
   // (NvI, demo, PoC, award, contract start) entered on the tender detail page.
-  const calendarItems: CalendarItem[] = openRows
-    .filter((t) => t.pipeline_stage && CALENDAR_STAGES.includes(t.pipeline_stage))
+  const calendarItems: CalendarItem[] = (calRowsRaw ?? [])
     .map((t) => {
       const byKind = new Map<string, CalendarItem["milestones"][number]>();
       const vragen = extrasById.get(t.id)?.deadline_vragen ?? "";
