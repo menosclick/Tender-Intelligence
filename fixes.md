@@ -169,3 +169,13 @@ Per Derson''s written spec: nav restructure (8 items, Bid Board → Tender Pipel
 ## 2026-07-21 (5) — Command Center PROMOTED TO PRODUCTION (Derson: "aprobado")
 
 Main fast-forwarded 02ad657 → 36751fb, pushed. Vercel production deployment `dpl_DjfjCTx7XYUH2dRuARSAhxhktP1z` **Ready**, aliased to `cba-tender-intelligence.vercel.app`. Prod `/login` → HTTP 200; `/inbox` unauthenticated → 307 to login (middleware covers the new routes). Same commit verified pre-merge: 48 prod + 5 dev E2E checks, fresh-eyes review 0 blockers (see previous entry).
+
+---
+
+## 2026-07-21 (6) — Real NL map PROMOTED + Needs Attention made real (tender_actions)
+
+**Map to prod (Derson: "aprobado"):** main ff 1e2eef3 → 902308d, deployment Ready, alias verified, /login 200. Real CBS/Kadaster 2025 province geometry (cartomap CC-BY), Mercator-projected offline into 20KB static paths — first render exposed a degree/radian axis-mix bug (country rendered as a 9px pancake), fixed and re-verified 6/6 checks.
+
+**"Add first action" didn''t work (Derson):** it was the documented disabled placeholder — his click was the go-ahead to build the real thing. Migration `tender_actions_for_needs_attention` applied (app-owned, RLS, service-role writes — exactly per docs/ops-schema-next-iteration.md). Server actions addAction/setActionStatus/deleteAction; naming a waiting-on party implies Waiting; official deadline joins from v_app_tenders (never stored). Dashboard: always-visible inline add form, Done/Remove per row, dev sample data removed — Waiting-on-Others and Due-this-week KPIs now count real rows.
+
+**Verified (17/17 E2E, real login):** empty state + form → add 3 actions (tender-linked, waiting-on, overdue-unassigned) → priority sort exact (overdue > waiting > due-this-week) → official deadline joined (2026-08-12 from the linked ESM tender) → KPIs 1/2 → Done removes from open list → Remove ×2 → empty state returns. tsc 0, build clean. Residue 0 (query), throwaway user deleted (404). Branch feature/tender-actions-2026-07-21, preview cgdbnb2tl Ready /login 200 — prod promotion pending Derson''s OK.
