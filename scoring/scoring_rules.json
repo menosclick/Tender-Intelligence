@@ -1,26 +1,41 @@
 {
   "_meta": {
-    "version": "1.0",
-    "updated": "2026-04-03",
+    "version": "2.0",
+    "updated": "2026-07-21",
     "max_score": 100,
-    "labels": {
-      "Hot": ">=70",
-      "Warm": "45-69",
-      "Cold": "20-44",
+    "note": "v2.0 documents the REAL two-stage scoring as implemented in workflow AFyIJ2PzlHA469nq (published version cbad0f8e, 2026-07-21). v1.0 described a single-stage design that was superseded by the 2026-07-07 rework and never matched prod. Evidence and decision log: os/AI_Operating_System/02_CLIENTS/cba-benelux/plans/2026-07-21-scoring-reconciliation.md",
+    "architecture": {
+      "stage_1_provisional": "Score Tender node. d1 fixed at 15 (no AI yet). Label decides ROUTING only: Hot/Warm -> AI analysis; Cold/Monitor/Disqualified -> No-AI branch (Mark No Match / Cold update).",
+      "learned_adjustment": "Get Score Adjustment + Apply Learned Adjustment nodes, between stage 1 and routing. Adds feedback-learned score deltas per buyer_type/CPV group, relabels with stage-1 thresholds.",
+      "stage_2_final": "Merge Analysis node — the FINAL word for every tender that reaches AI. Recomputes d1 from AI fit verdict (High=15, Medium=8, Low=2), recomputes score, relabels with final thresholds."
+    },
+    "labels_stage_1_provisional": {
+      "Hot": ">=70 (theoretical only — unreachable while d2/d7 are dead; max real score is 62)",
+      "Warm": ">=40 (THE AI GATE — lowered from 45 on 2026-07-21)",
+      "Cold": "20-39",
       "Monitor": "<20"
+    },
+    "labels_stage_2_final": {
+      "Hot": "fit_level == High AND score >= 50 (both product fit and conditions required)",
+      "Warm": ">=40",
+      "Cold": "20-39",
+      "Monitor": "<20",
+      "red_flags": "any red flag downgrades one label step; deadline_passed -> Disqualified"
     }
   },
   "dimensions": {
     "d1_product_fit": {
       "weight": 30,
-      "method": "LLM (gpt-4o-mini)",
+      "method": "two-stage",
       "description": "How clearly does this tender map to ManageEngine products?",
-      "note": "LLM returns 0-30. Skip LLM in MVP Phase 1-3; default to 15 for keyword-matched tenders."
+      "stage_1": "fixed 15 (provisional)",
+      "stage_2": { "High": 15, "Medium": 8, "Low": 2 },
+      "note": "Stage-2 values are intentionally capped at 15 so the AI fit verdict replaces (not doubles) the provisional constant. Effective weight is 15, not 30 — the remaining Hot signal lives in the fit-High requirement of the final label."
     },
     "d2_estimated_value": {
       "weight": 20,
       "method": "rule-based",
-      "description": "Estimated contract value in EUR",
+      "status": "DEAD IN PRACTICE — TenderNed rarely publishes waarde; observed max 2/20 pts. Revive when leidraad document extraction can populate value.",
       "bands": [
         {"min": 500000, "max": null, "points": 20},
         {"min": 200000, "max": 499999, "points": 15},
@@ -34,58 +49,37 @@
       "weight": 15,
       "method": "rule-based",
       "description": "Procurement procedure — affects competitiveness",
-      "mapping": {
-        "openbaar": 15,
-        "openbare procedure": 15,
-        "versneld": 13,
-        "niet-openbaar": 12,
-        "onderhandeling": 10,
-        "mini-competitie": 6,
-        "default": 8
-      }
+      "match_order_matters": "checked in this exact order because of substring overlaps (niet-openbaar contains openbaar). Bug fixed 2026-07-21.",
+      "mapping_ordered": [
+        {"contains": "mini-competitie", "points": 6},
+        {"contains": ["niet-openbaar", "niet-openbare"], "points": 12},
+        {"contains": "versneld", "points": 13},
+        {"contains": "onderhandeling", "points": 10},
+        {"contains": ["openbaar", "openbare"], "points": 15},
+        {"default": true, "points": 8}
+      ]
     },
     "d4_authority_type": {
       "weight": 15,
-      "method": "rule-based",
-      "description": "Type of contracting authority — strategic value",
-      "mapping": {
-        "rijksoverheid": 15,
-        "rijks": 15,
-        "uitvoeringsorganisatie": 14,
-        "politie": 14,
-        "defensie": 14,
-        "provincie": 13,
-        "grote gemeente": 13,
-        "onderwijs": 12,
-        "hogeschool": 12,
-        "universiteit": 12,
-        "zorg": 11,
-        "ziekenhuis": 11,
-        "gemeente": 7,
-        "water": 9,
-        "waterschap": 9,
-        "zbo": 12,
-        "default": 5
-      },
-      "buyer_normalization": {
-        "prefixes": {
-          "rijkswaterstaat": "rijksoverheid",
-          "ministerie": "rijksoverheid",
-          "belastingdienst": "rijksoverheid",
-          "cibg": "rijksoverheid",
-          "rvo": "rijksoverheid",
-          "openbaar ministerie": "rijksoverheid",
-          "politie": "politie",
-          "defensie": "defensie",
-          "provincie": "provincie",
-          "gemeente": "gemeente",
-          "hogeschool": "onderwijs",
-          "universiteit": "onderwijs",
-          "umcg": "zorg",
-          "ziekenhuis": "zorg",
-          "waterschap": "waterschap"
-        }
-      }
+      "method": "rule-based (ordered substring match on opdrachtgever)",
+      "description": "Type of contracting authority — strategic value. Extended 2026-07-21 (was: 53% of qualified fell to 'overig').",
+      "mapping_ordered": [
+        {"keys": ["rijkswaterstaat", "ministerie", "belastingdienst", "cibg", "rvo", "openbaar ministerie"], "type": "rijksoverheid", "points": 15},
+        {"keys": ["dienst uitvoering", "duo", "rijksinstituut", "rivm", "uitvoeringsorganisatie"], "type": "uitvoeringsorganisatie", "points": 14},
+        {"keys": ["politie"], "type": "politie", "points": 14},
+        {"keys": ["defensie"], "type": "defensie", "points": 14},
+        {"keys": ["provincie"], "type": "provincie", "points": 13},
+        {"keys": ["gemeente amsterdam", "gemeente rotterdam", "gemeente den haag", "gemeente utrecht"], "type": "grote gemeente", "points": 13},
+        {"keys": ["staatsbosbeheer", "kadaster", "rdw", "uwv", "svb", "zbo"], "type": "zbo", "points": 12},
+        {"keys": ["hogeschool", "universiteit", "mbo", "onderwijs", "scholen"], "type": "onderwijs", "points": 12},
+        {"keys": ["ziekenhuis", "umc", "ggd"], "type": "zorg", "points": 11},
+        {"keys": ["waterschap"], "type": "waterschap", "points": 9},
+        {"keys": ["omgevingsdienst", "werkorganisatie", "gemeenschappelijke regeling", "samenwerkingsverband", "veiligheidsregio"], "type": "intergemeentelijk", "points": 8},
+        {"keys": ["gemeente"], "type": "gemeente", "points": 7},
+        {"keys": ["b.v.", "n.v.", "schiphol", "stedin", "alliander", "enexis", "prorail", "tennet", "vitens", "gasunie"], "type": "commercial", "points": 6},
+        {"default": true, "type": "overig", "points": 5}
+      ],
+      "warning": "Boosting buyers only pays off if the keyword filter upstream is clean — a false positive from a boosted buyer becomes Hot (seen with RIVM health tenders before the 2026-07-21 health negative keywords)."
     },
     "d5_deadline_urgency": {
       "weight": 10,
@@ -102,7 +96,7 @@
     "d6_recency": {
       "weight": 5,
       "method": "rule-based",
-      "description": "Early detection reward — days since publication",
+      "description": "Early detection reward — hours since publicatie_datum (fallback scraped_at). Switched from scraped_at-only 2026-07-21.",
       "bands": [
         {"max_hours": 48, "points": 5},
         {"max_hours": 120, "points": 3},
@@ -112,7 +106,7 @@
     "d7_cba_relationship": {
       "weight": 5,
       "method": "rule-based (known_buyers table lookup)",
-      "description": "CBA Benelux relationship with this buyer",
+      "status": "DEAD — known_buyers table does not exist yet; always 0. Revive when CBA provides a customer/prospect list.",
       "mapping": {
         "existing_customer": 5,
         "manageengine_incumbent": 4,
@@ -123,38 +117,24 @@
     }
   },
   "red_flags": {
-    "description": "Any red flag triggers auto-downgrade by ONE label (Hot→Warm, Warm→Cold, etc.)",
-    "flags": [
-      {
-        "id": "deadline_too_short",
-        "description": "Deadline < 10 days from publication (emergency/incumbent-favored)",
-        "check": "deadline_submission - publication_date < interval '10 days'"
-      },
-      {
-        "id": "invitation_only",
-        "description": "Invitation-only procedure",
-        "check": "title or summary contains 'inschrijving op uitnodiging'"
-      },
-      {
-        "id": "late_detection_nvi",
-        "description": "NvI round already occurred before first detection",
-        "check": "tender_changes has nvi_round AND created_at > nvi_round detected_at"
-      },
-      {
-        "id": "renewal_likely",
-        "description": "Title contains verlenging or optie without nieuw — incumbent has strong advantage",
-        "check": "title contains ('verlenging' OR 'optie') AND title NOT CONTAINS 'nieuw'"
-      }
+    "description": "Any red flag triggers auto-downgrade by ONE label (Hot->Warm, Warm->Cold, etc.). deadline_passed -> Disqualified.",
+    "implemented": [
+      {"id": "deadline_too_short", "check": "deadline < 1.5 weeks from now"},
+      {"id": "deadline_passed", "check": "deadline in the past -> Disqualified"},
+      {"id": "renewal_likely", "check": "title contains 'verlenging' or ' optie ' without 'nieuw'"}
+    ],
+    "not_implemented": [
+      {"id": "invitation_only", "note": "v1.0 idea, never built"},
+      {"id": "late_detection_nvi", "note": "v1.0 idea, needs tender_changes tracking"}
     ]
   },
   "auto_disqualify": {
-    "description": "These conditions immediately set label=Disqualified, skip scoring",
+    "description": "Handled upstream of scoring: keyword filter (negative keywords incl. health topics since 2026-07-21) DISQUALIFIES before scoring; deadline_passed disqualifies in scoring.",
     "conditions": [
-      "Country != NL",
-      "publication_type = 'gunning' (awarded notice)",
-      "estimated_value_eur < 10000",
-      "deadline_submission already passed",
-      "title contains 'verlenging' or 'optie' without 'nieuw'"
+      "negative keyword hit (schoonmaak, bouw, vervoer, ..., vaccinatie, griep, prenatale, ...)",
+      "fewer than 1 positive keyword match",
+      "AMBIGUOUS (1 match) + LLM relevance NOT_RELEVANT",
+      "deadline_submission already passed"
     ]
   }
 }
