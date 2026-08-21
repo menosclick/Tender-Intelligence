@@ -31,7 +31,7 @@ export function HealthBanner({ health }: { health: PipelineHealth | null }) {
   if (!health.is_healthy) {
     const hours = Math.round(health.hours_since_scrape ?? 0);
     return (
-      <div className="flex items-start gap-2.5 border-b border-hot-line bg-hot-soft px-8 py-2.5 text-sm text-hot print:hidden">
+      <div className="flex items-start gap-2.5 border-b border-hot-line bg-hot-soft px-4 py-2.5 text-sm text-hot print:hidden lg:px-8">
         <WarnIcon />
         <p>
           <strong>Pipeline may be stale.</strong> Last successful scrape was{" "}
@@ -44,7 +44,7 @@ export function HealthBanner({ health }: { health: PipelineHealth | null }) {
 
   if ((health.stuck_unanalyzed ?? 0) >= 10) {
     return (
-      <div className="flex items-start gap-2.5 border-b border-warm-line bg-warm-soft px-8 py-2.5 text-sm text-warm print:hidden">
+      <div className="flex items-start gap-2.5 border-b border-warm-line bg-warm-soft px-4 py-2.5 text-sm text-warm print:hidden lg:px-8">
         <WarnIcon />
         <p>
           <strong>Analyzer backlog.</strong> {health.stuck_unanalyzed} tenders

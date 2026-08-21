@@ -225,7 +225,7 @@ export default async function InboxPage({
                       {t.title}
                     </Link>
                     {freshIds.has(t.id) && (
-                      <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-accent-fg">
+                      <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent-fg">
                         New
                       </span>
                     )}

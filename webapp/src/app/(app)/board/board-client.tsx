@@ -43,6 +43,24 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
 
   return (
     <div className="overflow-x-auto pb-4">
+      {optimistic.length === 0 && (
+        <div className="mb-4 rounded-xl border border-line bg-surface px-6 py-8 text-center">
+          <p className="text-sm font-medium text-fg">
+            No tenders in the pipeline yet.
+          </p>
+          <p className="mx-auto mt-2 max-w-md text-sm leading-relaxed text-fg-mid">
+            Qualify your first one from the Tender Inbox — every open Hot or
+            Warm tender there has an &ldquo;Add to pipeline&rdquo; action, and
+            it lands here in Identified.
+          </p>
+          <Link
+            href="/inbox"
+            className="mt-4 inline-block text-sm font-medium text-accent-fg hover:underline"
+          >
+            Open the Tender Inbox →
+          </Link>
+        </div>
+      )}
       <div className="flex min-w-max gap-3">
         {BOARD_STAGES.map((stage) => {
           const items = optimistic.filter((c) => c.stage === stage);

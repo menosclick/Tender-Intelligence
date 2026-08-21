@@ -92,7 +92,7 @@ export default async function AppLayout({
             <p className="text-sm font-semibold text-rail-fg">
               Tender Intelligence
             </p>
-            <p className="text-[11px] font-medium uppercase tracking-wider text-rail-fg-soft">
+            <p className="text-xs font-medium uppercase tracking-wider text-rail-fg-soft">
               CBA Benelux
             </p>
           </div>

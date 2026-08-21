@@ -14,7 +14,7 @@ Light, always. Users read Dutch procurement prose in a bright office. One commit
 | `surface` | `oklch(0.995 0.002 195)` | tables, cards, inputs |
 | `sunken` | `oklch(0.955 0.006 195)` | board columns, quotes, wells |
 | `line` / `line-strong` | `oklch(0.90 0.008 195)` / `oklch(0.84 0.012 195)` | borders |
-| `fg` / `fg-mid` / `fg-soft` | `oklch(0.26 0.02 210)` / `oklch(0.45 0.015 210)` / `oklch(0.60 0.012 210)` | text hierarchy |
+| `fg` / `fg-mid` / `fg-soft` | `oklch(0.26 0.02 210)` / `oklch(0.45 0.015 210)` / `oklch(0.55 0.012 210)` | text hierarchy |
 | `rail` / `rail-hover` / `rail-active` | `oklch(0.27 0.03 210)` / `oklch(0.33 0.03 210)` / `oklch(0.42 0.06 195)` | sidebar |
 | `rail-fg` / `rail-fg-soft` | `oklch(0.93 0.006 195)` / `oklch(0.72 0.015 200)` | sidebar text |
 | `accent` / `accent-strong` | `oklch(0.48 0.08 195)` / `oklch(0.42 0.08 195)` | primary actions, focus |
@@ -38,7 +38,7 @@ Rules: no pure `#fff`/`#000`; urgency and labels always pair color with text; fu
 - **Score**: 600-weight tabular numeral, optionally over a 36px micro-meter (2px track). Never a gauge.
 - **Buttons**: primary = accent fill, white text; secondary = surface + line border; quiet = text-only accent-fg. Radius 8. All have hover, focus-visible ring (2px accent/40), disabled 50%.
 - **Inputs**: surface bg, line border, radius 8, focus = accent border + ring. Labels 12px semibold fg-mid.
-- **Tables**: surface container with line border radius 10; 12px uppercase tracked headers in fg-soft; row hover `sunken`; 13px cells.
+- **Tables**: surface container with line border radius 12 (`rounded-xl`, same as cards); 12px uppercase tracked headers in fg-soft; row hover `sunken`; 13px cells. Wide tables scroll inside a `relative overflow-x-auto` wrapper with a `min-w` on the table — never squeeze columns.
 - **Banners** (health, denied, red flags): soft tint bg + matching full border + text color, radius 8. No icons-as-emoji anywhere; inline SVG, stroke 1.5, 16px.
 - **Empty states**: teach the next action, never just "no data".
 

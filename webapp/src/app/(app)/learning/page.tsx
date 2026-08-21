@@ -84,7 +84,7 @@ export default async function LearningPage() {
         actions={<RunLearningButton />}
       />
 
-      <div className="mt-5 flex divide-x divide-line overflow-hidden rounded-xl border border-line bg-surface">
+      <div className="mt-5 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:flex-row sm:divide-x sm:divide-y-0">
         {stats.map((s) => (
           <div key={s.label} className="flex-1 px-4 py-3">
             <p className="text-lg font-semibold tabular-nums">{s.value}</p>

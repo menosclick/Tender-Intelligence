@@ -113,7 +113,10 @@ export default async function SearchPage({
             {results.length} result{results.length === 1 ? "" : "s"}
             {results.length === 100 ? " (first 100 shown)" : ""}
           </p>
-          <table className="w-full text-sm">
+          {/* Same scroll treatment as every other wide table (inbox, dashboard,
+              calendar): the table keeps its readable width and scrolls inside. */}
+          <div className="relative overflow-x-auto">
+          <table className="w-full min-w-[40rem] text-sm">
             <thead>
               <tr className={`border-b border-line text-left ${microLabel}`}>
                 <th className="px-4 py-2.5">Tender</th>
@@ -167,6 +170,7 @@ export default async function SearchPage({
               )}
             </tbody>
           </table>
+          </div>
         </div>
       )}
     </div>

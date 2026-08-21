@@ -18,8 +18,6 @@ const BUYER_TYPES = [
   "overig",
 ];
 
-const labelCls = "mb-1.5 block text-xs font-semibold text-fg-mid";
-
 function Field({
   label,
   children,
@@ -29,10 +27,16 @@ function Field({
   children: React.ReactNode;
   hint?: string;
 }) {
+  // The control lives inside the <label> so the association is implicit —
+  // no id bookkeeping per field, and clicking the label focuses the control.
   return (
     <div>
-      <label className={labelCls}>{label}</label>
-      {children}
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-semibold text-fg-mid">
+          {label}
+        </span>
+        {children}
+      </label>
       {hint && <p className="mt-1 text-xs text-fg-soft">{hint}</p>}
     </div>
   );
@@ -80,7 +84,7 @@ export default function NewTenderPage() {
               placeholder="e.g. Gemeente Utrecht"
             />
           </Field>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Authority type">
               <select name="buyer_type" className={inputCls} defaultValue="gemeente">
                 {BUYER_TYPES.map((b) => (
@@ -94,7 +98,7 @@ export default function NewTenderPage() {
               <input name="waarde" className={inputCls} placeholder="e.g. 250000" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="CPV code (domain)" hint="48… = software, 72… = IT services">
               <input
                 name="cpv_main"
@@ -106,7 +110,7 @@ export default function NewTenderPage() {
               <input name="procedure" className={inputCls} placeholder="e.g. Openbaar" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Published">
               <input name="publicatie_datum" type="date" className={inputCls} />
             </Field>
@@ -130,7 +134,7 @@ export default function NewTenderPage() {
         <fieldset className="border-t border-line pt-5">
           <legend className="sr-only">Classification and outcome</legend>
           <p className={`${microLabel} mb-3`}>Classification &amp; outcome</p>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <Field label="Label">
               <select name="label" className={inputCls} defaultValue="Warm">
                 <option>Hot</option>

@@ -204,3 +204,52 @@ Main fast-forwarded 902308d → 94a3449, pushed. Production deployment lwpj42py0
 **NOT yet in prod:** webapp changes on branch (not merged), extractor workflow **left unpublished** (draft — no daily runs yet). Both promote together on Derson's aprobado.
 
 **Addendum (same day, Derson feedback on the live dashboard):** "Está duplicada lo de upcoming milestones" — the panel listed every milestone, so ESM appeared 3×. DB checked first: zero duplicate rows (`GROUP BY tender_id, kind HAVING count(*)>1` → empty); it was the same tender repeating per date. Fix: Upcoming Milestones now shows ONE row per tender — next date + "+N more dates →" linking to the Calendar. Verified with real login: one row per tender (4232/6169/5784), "+3 more dates"/"+4 more dates" rendered, ESM exactly once; screenshot `docs/vault-calendar-shots-2026-07-21/09-upcoming-grouped.png`; tsc + build green; user deleted (404).
+
+---
+
+## 2026-08-20 — Vault/Calendar/Extractor PROMOTED TO PRODUCTION (Derson: "promote to prod now")
+
+Branch `feature/vault-calendar-extraction` sat verified-but-unpromoted for a month (last touched 2026-07-21). Before promoting: `tsc --noEmit` clean, `next build` clean (0 errors, only pre-existing Supabase Edge Runtime warning), confirmed required tables still live in Supabase (`tender_milestones` 14 rows, `tender_documents` 34 rows, `milestone_extractions` 3 rows), confirmed `tenders_scraped` grew 1,741→2,395 rows over the month (pipeline kept running fine unattended).
+
+**Also fixed:** `scoring/scoring_rules.json` had an uncommitted local diff (the v2.0 rewrite documenting real two-stage scoring, drafted 2026-07-21 but never committed) — committed now, no behavior change, doc-only.
+
+**Actions:**
+1. Committed scoring doc fix (repo-local git identity set to `menosclick <270447224+menosclick@users.noreply.github.com>` to match required deploy author — was unset, would have hung the Vercel deploy in UNKNOWN).
+2. `git merge --ff-only` branch → main (3 commits, clean fast-forward, no conflicts).
+3. `git push origin main` → Vercel auto-deploy triggered.
+4. Polled `https://cba-tender-intelligence.vercel.app/login` until 200; confirmed via WebFetch it renders the real branded login form, no errors.
+5. Published n8n workflow `oRYeERPLQ9H2EQ4G` (Leidraad Milestone Extractor) — was sitting as an unpublished draft since creation. Confirmed post-publish: `active: true`, `activeVersionId` set, `sameAsDraft: true` (no drift from the verified draft).
+
+**Now live:**
+- Month-grid Calendar, real Document Vault on `cba-tender-intelligence.vercel.app`
+- Leidraad Milestone Extractor running daily 09:45 Europe/Amsterdam — first real unattended run tomorrow 2026-08-21
+
+**Pending:** verify the 2026-08-21 09:45 run executes clean (check `milestone_extractions` ledger + Slack report) — first real scheduled run, prior evidence was manual/dev-triggered only.
+
+---
+
+## 2026-08-20 (2) — Duplicate milestone extraction found and resolved
+
+Right after publishing the standalone Leidraad Milestone Extractor (`oRYeERPLQ9H2EQ4G`), checked whether the monolith `AFyIJ2PzlHA469nq` already did the same thing (per the 2026-07-21 open item: "integrated into the monolith as a 4-node branch off Assemble Dossier... verified in draft `337a8b1e`, publish classifier-blocked"). Confirmed via `activeVersion.sameAsDraft: true` that branch (`Build Planning Prompt` -> `Call OpenAI Planning` -> `Save Planning Milestones` -> `Exec Save Milestones`) was ALREADY LIVE — it must have been published sometime after 07-21 without a corresponding fixes.md entry. Both paths write to `tender_milestones` with the same `ON CONFLICT DO NOTHING`/`source='documents'` guard, so no data corruption risk, but real duplicate OpenAI spend and duplicate Slack notices on any tender both paths process.
+
+**Derson's call:** keep the standalone workflow (ledger-tracked via `milestone_extractions`, cleanly scoped to pipeline-stage tenders) as sole source of truth; disable the monolith's inline branch.
+
+**Action:** backed up `AFyIJ2PzlHA469nq` first (`02_CLIENTS/cba-benelux/workflows/backup-2026-08-20-AFyIJ2PzlHA469nq-before-disabling-planning-branch.json`), then `setNodeDisabled` on `Build Planning Prompt` (id `e4d97231-ebe6-4031-b5e6-021e4dfdeedc`) — disabling the branch's entry node no-ops everything downstream of it without touching scrape/score/AI-analysis/bid-pack/daily-brief. Published (`activeVersionId` `177b1317-bcee-4bca-980d-482cb016070d`, `sameAsDraft: true`). Diffed pre/post JSON snapshots programmatically: 76 nodes both sides, zero added/removed, exactly one node changed (`Build Planning Prompt`) — no incidental drift from the publish step (the documented REST-sanitization gotcha did not recur here).
+
+**Net effect:** single milestone-extraction path going forward — `oRYeERPLQ9H2EQ4G`, daily 09:45 AMS, batch over pipeline tenders, ledgered.
+
+---
+
+## 2026-08-21 — UI polish pass (audit vs DESIGN.md, 7 fixes)
+
+Full-screen audit of the webapp against DESIGN.md. Foundation was clean (no raw hex/neutral grays outside the static favicon); found 7 surgical gaps, all fixed:
+
+1. Search results table lacked the `relative overflow-x-auto` + `min-w` scroll treatment every other wide table has (squeezed on mobile).
+2. Learning stats strip forced 5 cells side-by-side at any width — now stacks on mobile like the dashboard KPI strip.
+3. tender/new: labels not associated with inputs (now implicit via wrapping `<label>`); 2/3-col grids didn't collapse on phones (now `sm:grid-cols-*`).
+4. Health banner `px-8` misaligned with mobile content gutter — now `px-4 lg:px-8`.
+5. Off-scale type: Inbox "New" chip 10px and rail "CBA Benelux" 11px → `text-xs` (12px floor per DESIGN.md).
+6. Empty pipeline board was 8 columns of "Drop here" — now teaches the next action (qualify from Tender Inbox).
+7. DESIGN.md drift corrected: fg-soft documented 0.60 vs shipped 0.55; table radius documented 10 vs shipped 12; table-scroll rule recorded.
+
+Verified: `tsc --noEmit` clean; `/login` 200, auth gate 307 on dev server. **Built but NOT visually verified:** authed screens (app is login-gated; visual pass pending Derson sign-in on the preview pane). NOT included in this commit: the uncommitted reports/page.tsx funnel rewrite found in the working tree from a prior session — no verification record, left for separate review.
