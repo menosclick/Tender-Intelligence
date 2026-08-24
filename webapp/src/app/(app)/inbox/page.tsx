@@ -2,8 +2,9 @@ import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { deadlineText, deadlineClass, stageLabel, asArray } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
-import { LabelChip, PageHeader, btnPrimary, btnSecondary, microLabel } from "@/lib/ui";
+import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard, recordFeedback } from "@/lib/actions";
+import { InboxFilters } from "./filters";
 
 export const dynamic = "force-dynamic";
 
@@ -24,9 +25,6 @@ type Row = {
   pipeline_stage: string | null;
   recommended_products: unknown;
 };
-
-const selectCls =
-  "rounded-lg border border-line-strong bg-surface px-3 py-1.5 text-sm text-fg transition-colors duration-150 focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/20";
 
 const DUE_BUCKETS = [
   { key: "14", label: "≤ 14 days", test: (d: number) => d <= 14 },
@@ -137,59 +135,19 @@ export default async function InboxPage({
         }
       />
 
-      <form
-        method="get"
-        className="mt-5 flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-3 py-2.5"
-      >
-        <input
-          name="q"
-          defaultValue={q}
-          placeholder="Search title or buyer"
-          aria-label="Search"
-          className={`${selectCls} min-w-44 flex-1`}
-        />
-        <select name="label" defaultValue={label} className={selectCls} aria-label="Label">
-          <option value="warmplus">Hot + Warm</option>
-          <option value="all">All labels</option>
-          <option value="Hot">Hot only</option>
-          <option value="Warm">Warm only</option>
-          <option value="Cold">Cold only</option>
-          <option value="Monitor">Monitor only</option>
-        </select>
-        <select name="domain" defaultValue={domain} className={selectCls} aria-label="Solution domain">
-          <option value="">Any domain</option>
-          {domains.map((d) => (
-            <option key={d} value={d}>
-              {d}
-            </option>
-          ))}
-        </select>
-        <select name="buyer" defaultValue={buyer} className={selectCls} aria-label="Buyer type">
-          <option value="">Any buyer type</option>
-          {buyerTypes.map((b) => (
-            <option key={b} value={b}>
-              {b}
-            </option>
-          ))}
-        </select>
-        <select name="due" defaultValue={due} className={selectCls} aria-label="Deadline">
-          <option value="">Any deadline</option>
-          {DUE_BUCKETS.map((b) => (
-            <option key={b.key} value={b.key}>
-              {b.label}
-            </option>
-          ))}
-        </select>
-        <button className={`${btnPrimary} py-1.5`}>Apply</button>
-        {filtersActive && (
-          <Link
-            href="/inbox"
-            className="text-sm font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
-          >
-            Clear
-          </Link>
-        )}
-      </form>
+      <InboxFilters
+        q={q}
+        label={label}
+        domain={domain}
+        buyer={buyer}
+        due={due}
+        domains={domains}
+        buyerTypes={buyerTypes}
+        // The bucket predicates stay on the server; the client only needs the
+        // key and its display name.
+        dueBuckets={DUE_BUCKETS.map((b) => ({ value: b.key, label: b.label }))}
+        filtersActive={filtersActive}
+      />
 
       {/* relative: the sr-only header is position:absolute — without a
           positioned ancestor its static position inside the wide table row

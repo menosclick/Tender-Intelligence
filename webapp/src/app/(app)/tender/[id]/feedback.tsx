@@ -15,12 +15,25 @@ export function FeedbackWidget({
 }) {
   const [relevance, setRelevance] = useState(initialRelevance);
   const [outcome, setOutcome] = useState(initialOutcome);
+  const [failed, setFailed] = useState(false);
   const [pending, startTransition] = useTransition();
 
+  // The pill flips immediately, but this is the signal that trains the scorer:
+  // if the write fails it must snap back rather than sit there showing a
+  // preference the database never received.
   function set(kind: "relevance" | "outcome", value: string) {
     const setter = kind === "relevance" ? setRelevance : setOutcome;
+    const previous = kind === "relevance" ? relevance : outcome;
     setter(value);
-    startTransition(() => recordFeedback(tenderId, kind, value));
+    setFailed(false);
+    startTransition(async () => {
+      try {
+        await recordFeedback(tenderId, kind, value);
+      } catch {
+        setter(previous);
+        setFailed(true);
+      }
+    });
   }
 
   const pill = (active: boolean, tone: "good" | "bad" | "neutral") =>
@@ -77,6 +90,12 @@ export function FeedbackWidget({
           ))}
         </div>
       </div>
+      {failed && (
+        <p className="mt-3 rounded-lg border border-hot-line bg-hot-soft px-3 py-2 text-sm text-hot">
+          That didn&apos;t save — the button has been reset. Check your
+          connection and try again.
+        </p>
+      )}
       <p className="mt-3 text-xs leading-relaxed text-fg-soft">
         Won/Lost tunes scoring weights; relevance tunes what gets surfaced.
         Nothing changes scores until you approve a suggestion on the Learning

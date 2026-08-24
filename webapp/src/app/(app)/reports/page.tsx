@@ -78,37 +78,74 @@ function BreakdownTable({
   );
 }
 
-type TenderRow = {
-  id: number;
-  naam: string | null;
-  label: string | null;
-  score: number | null;
-  status: string | null;
-  opdrachtgever: string | null;
+type Admin = ReturnType<typeof createSupabaseAdmin>;
+
+// "Qualified" everywhere on this page: scored, and not one of the two labels
+// that mean "not a real opportunity". Kept in one place so the funnel count,
+// the breakdowns and the monthly series can never drift apart.
+function qualifiedOnly<T extends { not: (c: string, o: string, v: unknown) => T }>(
+  query: T
+): T {
+  return query
+    .not("label", "is", null)
+    .not("label", "in", "(Disqualified,Monitor)");
+}
+
+// count(*) with head:true returns the number in a header and transfers zero
+// rows. The archive grows ~25 tenders/day; the report must not get slower for
+// it, so every total on this page is counted in Postgres, never in JS.
+async function countTenders(
+  admin: Admin,
+  opts: { qualified?: boolean; manual?: boolean; from?: string; to?: string } = {}
+): Promise<number> {
+  let q = admin.from("tenders_scraped").select("id", { count: "exact", head: true });
+  if (opts.qualified) q = qualifiedOnly(q);
+  if (opts.manual) q = q.eq("platform", "manual");
+  if (opts.from) q = q.gte("scraped_at", opts.from);
+  if (opts.to) q = q.lt("scraped_at", opts.to);
+  const { count } = await q;
+  return count ?? 0;
+}
+
+// The only rows this page pulls: two columns, qualified tenders only (tens
+// today, not thousands). Still paged — PostgREST caps a response at 1,000 and
+// a silently truncated breakdown would be a quiet lie.
+type QualifiedRow = {
   buyer_type_detected: string | null;
   cpv_main: string | null;
-  scraped_at: string | null;
-  sluiting_datum: string | null;
-  platform: string | null;
 };
 
-// PostgREST caps each response at 1,000 rows — page through everything.
-async function fetchAllTenders(admin: ReturnType<typeof createSupabaseAdmin>) {
+async function fetchQualified(admin: Admin): Promise<QualifiedRow[]> {
   const PAGE = 1000;
-  const rows: TenderRow[] = [];
+  const rows: QualifiedRow[] = [];
   for (let from = 0; ; from += PAGE) {
-    const { data } = await admin
-      .from("tenders_scraped")
-      .select(
-        "id,naam,label,score,status,opdrachtgever,buyer_type_detected,cpv_main,scraped_at,sluiting_datum,platform"
-      )
+    const { data } = await qualifiedOnly(
+      admin.from("tenders_scraped").select("buyer_type_detected,cpv_main")
+    )
       .order("id")
       .range(from, from + PAGE - 1);
-    const page = (data ?? []) as TenderRow[];
+    const page = (data ?? []) as QualifiedRow[];
     rows.push(...page);
     if (page.length < PAGE) break;
   }
   return rows;
+}
+
+// UTC month windows, oldest first. scraped_at is a UTC timestamp, so the
+// bucket boundaries are UTC too — a local-time window would misfile rows
+// scraped near midnight.
+function monthWindows(count: number) {
+  const now = new Date();
+  return Array.from({ length: count }, (_, i) => {
+    const offset = count - 1 - i;
+    const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset, 1));
+    const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - offset + 1, 1));
+    return {
+      key: `${start.getUTCFullYear()}-${String(start.getUTCMonth() + 1).padStart(2, "0")}`,
+      start: start.toISOString(),
+      end: end.toISOString(),
+    };
+  });
 }
 
 const DROPPED_OR_LOST = ["Dropped", "Lost"];
@@ -117,16 +154,45 @@ const STAGE_ORDER = [...ACTIVE_STAGES, "Won", "Lost", "Dropped"];
 
 export default async function ReportsPage() {
   const admin = createSupabaseAdmin();
-  const [tenders, { data: pipeline }, { data: feedback }] = await Promise.all([
-    fetchAllTenders(admin),
+  const windows = monthWindows(6);
+
+  const [
+    scannedCount,
+    qualifiedCount,
+    manualCount,
+    qualifiedRows,
+    { data: pipeline },
+    { data: feedback },
+    monthlyAll,
+  ] = await Promise.all([
+    countTenders(admin),
+    countTenders(admin, { qualified: true }),
+    countTenders(admin, { manual: true }),
+    fetchQualified(admin),
     admin.from("bid_pipeline").select("tender_id,stage"),
     admin.from("tender_feedback").select("tender_id,kind,value"),
+    Promise.all(
+      windows.map((w) =>
+        Promise.all([
+          countTenders(admin, { from: w.start, to: w.end }),
+          countTenders(admin, { qualified: true, from: w.start, to: w.end }),
+        ]).then(([scanned, qualified]) => ({ month: w.key, scanned, qualified }))
+      )
+    ),
   ]);
 
-  const all = tenders;
-  const byId = new Map(all.map((t) => [t.id, t]));
+  // Board cards carry their own tender details — bounded by the size of the
+  // board, not the archive.
+  const cardIds = [...new Set((pipeline ?? []).map((p) => p.tender_id))];
+  const { data: cardTenders } = cardIds.length
+    ? await admin
+        .from("tenders_scraped")
+        .select("id,naam,label,score")
+        .in("id", cardIds)
+    : { data: [] as { id: number; naam: string | null; label: string | null; score: number | null }[] };
+
+  const byId = new Map((cardTenders ?? []).map((t) => [t.id, t]));
   const cards = (pipeline ?? []).filter((p) => byId.has(p.tender_id));
-  const qualified = all.filter((t) => t.label && !["Disqualified", "Monitor"].includes(t.label));
 
   // Latest outcome/relevance feedback per tender (rows aren't deduped upstream).
   const latestFeedback = new Map<number, { outcome?: string; relevance?: string }>();
@@ -154,8 +220,8 @@ export default async function ReportsPage() {
   const showWinRate = decided >= MIN_OUTCOMES_FOR_RATE;
 
   const funnel: { label: string; value: string | number; sub?: string; href?: string }[] = [
-    { label: "Tenders scanned", value: all.length, sub: "TenderNed, all time" },
-    { label: "Qualified (Hot/Warm/Cold)", value: qualified.length, sub: "AI-scored as relevant" },
+    { label: "Tenders scanned", value: scannedCount, sub: "TenderNed, all time" },
+    { label: "Qualified (Hot/Warm/Cold)", value: qualifiedCount, sub: "AI-scored as relevant" },
     { label: "Moved to pipeline", value: cards.length, sub: "a human chose to act" },
     { label: "Active right now", value: activeCards.length, sub: "Identified → Award", href: "/board" },
   ];
@@ -199,7 +265,7 @@ export default async function ReportsPage() {
 
   // Domains (CPV) among qualified tenders — supporting context.
   const domCount = new Map<string, number>();
-  for (const t of qualified) {
+  for (const t of qualifiedRows) {
     const k = cpvDomain(t.cpv_main);
     domCount.set(k, (domCount.get(k) ?? 0) + 1);
   }
@@ -209,7 +275,7 @@ export default async function ReportsPage() {
 
   // Buyer types among qualified tenders — supporting context.
   const btCount = new Map<string, number>();
-  for (const t of qualified) {
+  for (const t of qualifiedRows) {
     const k = t.buyer_type_detected ?? "onbekend";
     btCount.set(k, (btCount.get(k) ?? 0) + 1);
   }
@@ -217,38 +283,18 @@ export default async function ReportsPage() {
     .sort((a, b) => b[1] - a[1])
     .map(([label, count]) => ({ label, count }));
 
-  // Monthly intake, last 6 months — already answers "is the system healthy
-  // and consistent", kept as-is.
-  const months = new Map<string, { scanned: number; qualified: number }>();
-  const now = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-    months.set(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`, {
-      scanned: 0,
-      qualified: 0,
-    });
-  }
-  for (const t of all) {
-    const key = (t.scraped_at ?? "").slice(0, 7);
-    const e = months.get(key);
-    if (e) {
-      e.scanned += 1;
-      if (t.label && !["Disqualified", "Monitor"].includes(t.label)) e.qualified += 1;
-    }
-  }
-  const monthlyAll = [...months.entries()].map(([k, v]) => ({ month: k, ...v }));
+  // Monthly intake, last 6 months (counted in Postgres above).
   // Trim leading months from before the scraper existed — all-zero rows read as failure.
   const firstActive = monthlyAll.findIndex((r) => r.scanned > 0);
   const monthly = firstActive === -1 ? monthlyAll : monthlyAll.slice(firstActive);
 
-  const manualCount = all.filter((t) => t.platform === "manual").length;
   const dateStr = new Date().toLocaleDateString("nl-NL", { dateStyle: "long" });
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
       <PageHeader
         title="Reports"
-        sub={`Tender intelligence overview · ${dateStr} · ${all.length} tenders scanned${manualCount > 0 ? ` (${manualCount} registered manually)` : ""}`}
+        sub={`Tender intelligence overview · ${dateStr} · ${scannedCount} tenders scanned${manualCount > 0 ? ` (${manualCount} registered manually)` : ""}`}
         actions={<PrintButton />}
       />
 

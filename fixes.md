@@ -290,3 +290,25 @@ tsc clean, `next build` clean. Local verification of auth paths done pre-deploy.
 - **Live evidence the outcome fix fires:** tender 8606 was moved to Dropped in the running app at 16:20 (Derson using it during the deploy) and `no_bid` was recorded alongside — under the OLD code, Dropped wrote no outcome at all. Dashboard counts followed correctly (active pipeline 5→4, deadlines 8→6, since 8606 left the calendar-tracked stages).
 
 **Open — legacy data, NOT auto-corrected:** two rows predate the fix and still contradict the new invariant: tender 4232 and 6888 are both `Dropped` with outcome `bidding`. Harm is low (they don't touch win rate, and `generate_scoring_suggestions` only reads won/lost), but the reports exit table shows "Dropped" instead of "Decided not to bid" for them. Deliberately left alone — rewriting recorded human feedback is Derson's call, not a silent migration.
+
+---
+
+## 2026-08-24 (3) — Second-tier pass: reports scale, inbox friction, optimistic-UI honesty
+
+**Reports is now constant-time.** It used to page the ENTIRE `tenders_scraped` corpus into the app on every view (2,457 rows x 11 columns, 3 round trips, growing ~25/day) and aggregate in JS. Rewritten to count in Postgres: `count(*)` with `head:true` transfers zero rows, so the scanned/qualified/manual totals and all 12 monthly-bucket counts are constant regardless of archive size. The only rows now fetched are the QUALIFIED ones (24 today, 2 columns) for the domain/buyer breakdowns — still paged, so a >1,000 qualified archive can't silently truncate a breakdown. Board-card tender details are fetched by id (bounded by board size) instead of being looked up in a full-corpus map. **No schema changes** — deliberately kept app-side rather than adding views to the client's production DB.
+
+**Inbox filters apply on change.** Triage is the daily loop; an extra "Apply" click per filter was the friction that mattered. Dropdowns now navigate on change via `router.push` inside a transition (form dims while pending). It stays a real `<form method="get">` with a submit button, so it degrades to the old behavior without JS; the button now reads "Search" because it only applies the typed query. Bucket predicates stay server-side — the client component only receives key + display name.
+
+**Feedback pills no longer lie on failure.** The widget flipped the pill optimistically and never rolled back, so a failed write left the UI showing a training signal the database never received. Now reverts to the previous value and states the failure.
+
+**Tender detail back link** said "Back to dashboard" on every tender even though tenders are reached from the Inbox (and the rail highlights the Inbox while you're on one). Now agrees with both.
+
+**BLOCKED — needs Derson:** the legacy-row backfill (4232, 6888: `Dropped` with outcome `bidding`) was denied by the Claude Code permission classifier when attempted via the Supabase MCP. Not worked around. SQL handed to Derson to run:
+```sql
+update tender_feedback f set value = 'no_bid'
+from bid_pipeline bp
+where bp.tender_id = f.tender_id and f.kind = 'outcome'
+  and bp.stage = 'Dropped' and f.value <> 'no_bid';
+```
+
+tsc + `next build` clean. Ground truth captured from SQL before deploy for a numbers-match check: scanned 2457, qualified 24, manual 4, monthly Apr 104/2 · May 662/3 · Jun 675/6 · Jul 696/9 · Aug 320/4, buyer types overig 10 / rijksoverheid 4 / onderwijs 3 / gemeente 3 / uitvoeringsorganisatie 1 / provincie 1 / intergemeentelijk 1 / grote gemeente 1, CPV 72=16 · 48=5 · 64=1 · 51=1 · none=1.

@@ -142,11 +142,13 @@ export default async function TenderDetailPage({
   return (
     <div className="mx-auto max-w-3xl">
       {/* Header */}
+      {/* Tender pages are reached from the Inbox, and the rail highlights the
+          Inbox while you're on one — the back link agrees with both. */}
       <Link
-        href="/dashboard"
+        href="/inbox"
         className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
       >
-        ← Back to dashboard
+        ← Back to Tender Inbox
       </Link>
       <div className="mt-3 flex items-start justify-between gap-6">
         <div className="min-w-0">
