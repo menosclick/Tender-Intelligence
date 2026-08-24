@@ -264,3 +264,5 @@ Verified: `tsc --noEmit` clean; `/login` 200, auth gate 307 on dev server. **Bui
 - Data-verified against prod DB: 2,457 scanned → 24 qualified → 11 pipeline → 5 active; >1,000-row pagination the rewrite adds is genuinely required (PostgREST caps at 1,000).
 - **Bug found with real data:** guard was `won+lost > 0`, so with today's 0 won / 1 lost the page rendered "Win rate 0%" off a single lost bid — the exact misleading rate its own comment promises to prevent (confirmed live on prod, old page also shows "Pipeline value €171.580" from one tender's value). Fixed: rate needs ≥3 decided outcomes; below that the funnel shows honest counts.
 - tsc clean. Promoted to prod; post-deploy render check below.
+
+**Post-deploy render check (925efd3, prod):** /reports live — funnel 2457 → 24 → 11 → 5, "Outcomes recorded 1 (0 won · 1 lost)" with the threshold explainer instead of "Win rate 0%"; value KPIs gone; pipeline table lists real tenders with chips. Screenshot in session. VERIFIED end-to-end.
