@@ -1,9 +1,22 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { USER_EMAIL_HEADER } from "@/lib/auth-header";
 
 // Gate the entire app: only /login and /auth/* are public.
 export async function middleware(request: NextRequest) {
-  let response = NextResponse.next({ request });
+  // Identity header is set from the VERIFIED user below. Delete any inbound
+  // copy first so a client can never inject one.
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.delete(USER_EMAIL_HEADER);
+
+  // Supabase may rotate the session during getUser(); collect the cookies it
+  // wants to write and replay them onto whichever response we end up returning
+  // (including redirects, so a refreshed token is never dropped).
+  const pendingCookies: {
+    name: string;
+    value: string;
+    options?: Record<string, unknown>;
+  }[] = [];
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -17,10 +30,7 @@ export async function middleware(request: NextRequest) {
           cookiesToSet.forEach(({ name, value }) =>
             request.cookies.set(name, value)
           );
-          response = NextResponse.next({ request });
-          cookiesToSet.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options)
-          );
+          pendingCookies.push(...cookiesToSet);
         },
       },
     }
@@ -30,6 +40,13 @@ export async function middleware(request: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  function withCookies<T extends NextResponse>(response: T): T {
+    for (const { name, value, options } of pendingCookies) {
+      response.cookies.set(name, value, options);
+    }
+    return response;
+  }
 
   const path = request.nextUrl.pathname;
   const isPublic = path.startsWith("/login") || path.startsWith("/auth");
@@ -49,21 +66,25 @@ export async function middleware(request: NextRequest) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("denied", "1");
-    return NextResponse.redirect(url);
+    return withCookies(NextResponse.redirect(url));
   }
 
   if (!user && !isPublic) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    return NextResponse.redirect(url);
+    return withCookies(NextResponse.redirect(url));
   }
   if (user && path.startsWith("/login")) {
     const url = request.nextUrl.clone();
     url.pathname = "/dashboard";
-    return NextResponse.redirect(url);
+    return withCookies(NextResponse.redirect(url));
   }
 
-  return response;
+  // Hand the verified identity to the server components so the app layout
+  // doesn't have to re-validate the same JWT over the network.
+  if (user?.email) requestHeaders.set(USER_EMAIL_HEADER, user.email);
+
+  return withCookies(NextResponse.next({ request: { headers: requestHeaders } }));
 }
 
 export const config = {

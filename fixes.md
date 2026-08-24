@@ -266,3 +266,18 @@ Verified: `tsc --noEmit` clean; `/login` 200, auth gate 307 on dev server. **Bui
 - tsc clean. Promoted to prod; post-deploy render check below.
 
 **Post-deploy render check (925efd3, prod):** /reports live — funnel 2457 → 24 → 11 → 5, "Outcomes recorded 1 (0 won · 1 lost)" with the threshold explainer instead of "Win rate 0%"; value KPIs gone; pipeline table lists real tenders with chips. Screenshot in session. VERIFIED end-to-end.
+
+---
+
+## 2026-08-24 (2) — Structural pass: region, resilience, learning-loop integrity
+
+Full analysis of the webapp (all 11 screens, libs, actions, auth, config) surfaced three structural issues above any visual work. All three fixed.
+
+**1. Every request crossed the Atlantic.** Supabase is `eu-west-1` (Ireland); no `vercel.json` existed, so functions ran in Vercel's US default. Measured from a real browser BEFORE: dashboard domComplete 2049ms, reports 1557ms, inbox 844ms. Added `webapp/vercel.json` pinning `regions: ["dub1"]` (Dublin = eu-west-1). Also removed a duplicate `getUser()`: middleware already validates the JWT per request, so it now forwards the verified email on `x-tender-user-email` and the app layout reads that instead of making a second auth-API round trip. The middleware DELETES any inbound copy of that header first — verified locally that a forged `x-tender-user-email` on `/dashboard` still 307s to /login.
+
+**2. No loading, error or not-found states existed anywhere** (zero loading/error/not-found files). Added `(app)/loading.tsx` (content-shaped skeleton, not a spinner), `(app)/error.tsx`, `(app)/not-found.tsx`, and `app/global-error.tsx`. Also hardened the app layout: its two health queries moved to `.maybeSingle()` and are wrapped in try/catch, so a Supabase outage degrades the status line instead of taking down the rail on every screen.
+**Correction to the analysis:** I initially called the layout's `.single()` an app-shell crash risk. That was WRONG — supabase-js returns `{data: null, error}` for a 0-row `.single()`, it does not throw, and the code already handled null. The real gap was the absent error boundary for genuine fetch failures.
+
+**3. Learning loop could be silently poisoned by a mis-drag.** `moveCard` wrote won/lost/bidding feedback but had no entry for Identified/Analysis — dragging a card back OUT of Won/Lost left the stale outcome in `tender_feedback` forever, invisible on screen but consumed by the reports funnel and `generate_scoring_suggestions`. With only 1 real outcome in the system, one mis-drag was 50% of the training signal. Fixed: `STAGE_OUTCOME` now maps EVERY stage (Identified/Analysis → retract the outcome row; Dropped → no_bid), and `FINAL_STAGE` maps terminal outcomes back to one stage each. Also whitelisted `recordFeedback` values (`relevance`: relevant/not_relevant, `outcome`: bidding/won/lost/no_bid) — server actions accept arbitrary arguments, and this feeds the scorer.
+
+tsc clean, `next build` clean. Local verification of auth paths done pre-deploy. Post-deploy timings + signed-in render check recorded below.

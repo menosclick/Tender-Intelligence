@@ -1,4 +1,6 @@
+import { headers } from "next/headers";
 import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
+import { USER_EMAIL_HEADER } from "@/lib/auth-header";
 import { NavLinks } from "./nav-links";
 import { HealthBanner, type PipelineHealth } from "./health-banner";
 
@@ -25,32 +27,42 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const supabase = await createSupabaseServer();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // The middleware already validated this request's JWT and forwards the
+  // verified email, so the shell renders without a second auth round trip.
+  // Fallback covers any path that somehow bypassed the matcher.
+  let userEmail = (await headers()).get(USER_EMAIL_HEADER);
+  if (!userEmail) {
+    const supabase = await createSupabaseServer();
+    userEmail = (await supabase.auth.getUser()).data.user?.email ?? null;
+  }
 
   // Freshness + pipeline health (read-only, service role). Health feeds both
   // the warning banner and the rail status dot so they can never disagree.
-  const admin = createSupabaseAdmin();
-  const [{ data: latest }, { data: health }] = await Promise.all([
-    admin
-      .from("tenders_scraped")
-      .select("scraped_at")
-      .order("scraped_at", { ascending: false })
-      .limit(1)
-      .single(),
-    admin.from("v_pipeline_health").select("*").single(),
-  ]);
-
-  const lastScrape = latest?.scraped_at
-    ? new Date(latest.scraped_at).toLocaleString("nl-NL", {
+  // Wrapped: a Supabase outage must degrade the status line, not blank the
+  // navigation rail on every screen.
+  let lastScrape = "unknown";
+  let h: PipelineHealth | null = null;
+  try {
+    const admin = createSupabaseAdmin();
+    const [{ data: latest }, { data: health }] = await Promise.all([
+      admin
+        .from("tenders_scraped")
+        .select("scraped_at")
+        .order("scraped_at", { ascending: false })
+        .limit(1)
+        .maybeSingle(),
+      admin.from("v_pipeline_health").select("*").maybeSingle(),
+    ]);
+    if (latest?.scraped_at) {
+      lastScrape = new Date(latest.scraped_at).toLocaleString("nl-NL", {
         dateStyle: "short",
         timeStyle: "short",
-      })
-    : "unknown";
-
-  const h = (health ?? null) as PipelineHealth | null;
+      });
+    }
+    h = (health ?? null) as PipelineHealth | null;
+  } catch {
+    // Status line stays "unknown"; the app itself remains usable.
+  }
   const dotClass = !h
     ? "bg-rail-fg-soft"
     : !h.is_healthy
@@ -73,7 +85,7 @@ export default async function AppLayout({
             </span>
             <form action="/auth/signout" method="post">
               <button
-                title={user?.email ?? ""}
+                title={userEmail ?? ""}
                 className="text-xs text-rail-fg-soft underline decoration-rail-line underline-offset-2 transition-colors duration-150 hover:text-rail-fg"
               >
                 Sign out
@@ -105,8 +117,8 @@ export default async function AppLayout({
           </p>
         </div>
         <div className="border-t border-rail-line px-4 py-3 text-xs">
-          <p className="truncate text-rail-fg-soft" title={user?.email ?? ""}>
-            {user?.email}
+          <p className="truncate text-rail-fg-soft" title={userEmail ?? ""}>
+            {userEmail}
           </p>
           <form action="/auth/signout" method="post" className="mt-1.5">
             <button className="text-rail-fg-soft underline decoration-rail-line underline-offset-2 transition-colors duration-150 hover:text-rail-fg">

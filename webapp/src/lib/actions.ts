@@ -12,6 +12,36 @@ import { BOARD_STAGES, MANUAL_MILESTONE_KINDS, type BoardStage } from "@/lib/for
 // the scraper owns. tender_documents and milestone_extractions are written by
 // the n8n Leidraad Milestone Extractor — the app only reads them.
 
+// The single mapping between a board stage and the outcome it implies.
+// `null` means "this stage asserts no outcome" — any previously recorded one
+// is retracted when a card lands here. Terminal outcomes map back to exactly
+// one stage (see FINAL_STAGE), so the two directions can never disagree.
+const STAGE_OUTCOME: Record<BoardStage, string | null> = {
+  Identified: null,
+  Analysis: null,
+  "Q&A": "bidding",
+  Submitted: "bidding",
+  Award: "bidding",
+  Won: "won",
+  Lost: "lost",
+  Dropped: "no_bid",
+};
+
+// Outcomes that name a single unambiguous stage. "bidding" is deliberately
+// absent: it covers Q&A, Submitted and Award, so it can't pick one.
+const FINAL_STAGE: Record<string, BoardStage> = {
+  won: "Won",
+  lost: "Lost",
+  no_bid: "Dropped",
+};
+
+// Server actions are callable with arbitrary arguments — the feedback that
+// trains the scorer is whitelisted, never passed through.
+const FEEDBACK_VALUES: Record<string, string[]> = {
+  relevance: ["relevant", "not_relevant"],
+  outcome: ["bidding", "won", "lost", "no_bid"],
+};
+
 async function requireUser() {
   const supabase = await createSupabaseServer();
   const {
@@ -49,22 +79,30 @@ export async function moveCard(cardId: number, stage: BoardStage) {
     .single();
   if (error) throw new Error(error.message);
 
-  // Board is also a capture point: Won/Lost/Bidding on the board records the learning signal.
-  const outcomeMap: Record<string, string> = {
-    Won: "won",
-    Lost: "lost",
-    "Q&A": "bidding",
-    Submitted: "bidding",
-    Award: "bidding",
-  };
-  if (card && outcomeMap[stage]) {
-    await admin.from("tender_feedback").upsert(
-      { tender_id: card.tender_id, kind: "outcome", value: outcomeMap[stage], user_email: user.email },
-      { onConflict: "tender_id,kind" }
-    );
+  // Board is also a capture point: the stage records the learning signal.
+  // EVERY stage maps to exactly one outcome state, including the two that mean
+  // "no outcome yet". Without that, dragging a card back out of Won/Lost (a
+  // mis-drop, or a corrected decision) left the old "won"/"lost" in
+  // tender_feedback forever — invisible on screen, but consumed by the reports
+  // funnel and by generate_scoring_suggestions. The board is the authority.
+  if (card) {
+    const outcome = STAGE_OUTCOME[stage];
+    if (outcome) {
+      await admin.from("tender_feedback").upsert(
+        { tender_id: card.tender_id, kind: "outcome", value: outcome, user_email: user.email },
+        { onConflict: "tender_id,kind" }
+      );
+    } else {
+      await admin
+        .from("tender_feedback")
+        .delete()
+        .eq("tender_id", card.tender_id)
+        .eq("kind", "outcome");
+    }
   }
   revalidatePath("/board");
   revalidatePath("/learning");
+  revalidatePath("/reports");
 }
 
 export async function updateCard(
@@ -298,6 +336,10 @@ export async function recordFeedback(
   value: string
 ) {
   const user = await requireUser();
+  if (!Number.isInteger(tenderId)) throw new Error("Invalid tender");
+  if (!FEEDBACK_VALUES[kind]?.includes(value))
+    throw new Error("Invalid feedback");
+
   const admin = createSupabaseAdmin();
   const { error } = await admin.from("tender_feedback").upsert(
     { tender_id: tenderId, kind, value, user_email: user.email },
@@ -307,16 +349,16 @@ export async function recordFeedback(
 
   // Mirror of moveCard's outcome capture: a final outcome recorded here moves
   // the board card too, so the funnel never disagrees with the feedback.
-  const finalStage: Record<string, BoardStage> = { won: "Won", lost: "Lost" };
-  if (kind === "outcome" && finalStage[value]) {
+  if (kind === "outcome" && FINAL_STAGE[value]) {
     await admin
       .from("bid_pipeline")
-      .update({ stage: finalStage[value] })
+      .update({ stage: FINAL_STAGE[value] })
       .eq("tender_id", tenderId);
     revalidatePath("/board");
   }
   revalidatePath("/dashboard");
   revalidatePath("/inbox");
+  revalidatePath("/reports");
   revalidatePath(`/tender/${tenderId}`);
 }
 
