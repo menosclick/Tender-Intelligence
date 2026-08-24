@@ -253,3 +253,14 @@ Full-screen audit of the webapp against DESIGN.md. Foundation was clean (no raw 
 7. DESIGN.md drift corrected: fg-soft documented 0.60 vs shipped 0.55; table radius documented 10 vs shipped 12; table-scroll rule recorded.
 
 Verified: `tsc --noEmit` clean; `/login` 200, auth gate 307 on dev server. **Built but NOT visually verified:** authed screens (app is login-gated; visual pass pending Derson sign-in on the preview pane). NOT included in this commit: the uncommitted reports/page.tsx funnel rewrite found in the working tree from a prior session — no verification record, left for separate review.
+
+---
+
+## 2026-08-24 — Reports funnel rewrite verified and promoted; polish pass visually verified
+
+**Polish pass (0129cc0) visual verification closed:** walked prod signed-in via Derson's Chrome — dashboard, inbox, board, calendar, vault, search, learning, reports all render clean. Responsive fixes proven via production DOM: learning strip `sm:flex-row` stack, search table `relative overflow-x-auto` + `min-w-[40rem]`, tender/new 13/13 labels wrapping their control and all grids `sm:grid-cols-*`.
+
+**Reports rewrite (found uncommitted from a prior session) put through a fixer pass:**
+- Data-verified against prod DB: 2,457 scanned → 24 qualified → 11 pipeline → 5 active; >1,000-row pagination the rewrite adds is genuinely required (PostgREST caps at 1,000).
+- **Bug found with real data:** guard was `won+lost > 0`, so with today's 0 won / 1 lost the page rendered "Win rate 0%" off a single lost bid — the exact misleading rate its own comment promises to prevent (confirmed live on prod, old page also shows "Pipeline value €171.580" from one tender's value). Fixed: rate needs ≥3 decided outcomes; below that the funnel shows honest counts.
+- tsc clean. Promoted to prod; post-deploy render check below.

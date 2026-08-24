@@ -1,6 +1,7 @@
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import { stageLabel } from "@/lib/format";
-import { PageHeader, microLabel } from "@/lib/ui";
+import { PageHeader, microLabel, LabelChip } from "@/lib/ui";
+import { Kpi, ChartCard, HBarList } from "@/lib/viz";
 import { PrintButton } from "./print-button";
 
 export const dynamic = "force-dynamic";
@@ -25,30 +26,16 @@ function cpvDomain(cpv: string | null): string {
   return CPV_DOMAINS[p] ?? `CPV ${p}xx`;
 }
 
-// waarde is free text ("€ 1.250.000", "250000", "90000 + 101271/jaar", …).
-// Take only the FIRST number group — concatenating all digits produces nonsense.
-function parseValue(v: string | null): number {
-  if (!v) return 0;
-  const m = /\d{1,3}(?:[.\s]\d{3})+(?:,\d{1,2})?|\d+(?:,\d{1,2})?/.exec(v);
-  if (!m) return 0;
-  const whole = m[0].replace(/,\d{1,2}$/, "").replace(/[^\d]/g, "");
-  const n = parseInt(whole, 10);
-  return Number.isFinite(n) ? n : 0;
-}
-
-function euro(n: number): string {
-  if (n <= 0) return "—";
-  return "€ " + n.toLocaleString("nl-NL");
-}
-
 function BreakdownTable({
   title,
   columns,
   rows,
+  emptyText = "No data yet",
 }: {
   title: string;
   columns: string[];
-  rows: (string | number)[][];
+  rows: React.ReactNode[][];
+  emptyText?: string;
 }) {
   return (
     <div className="overflow-hidden rounded-xl border border-line bg-surface">
@@ -71,7 +58,7 @@ function BreakdownTable({
               {r.map((cell, j) => (
                 <td
                   key={j}
-                  className={`px-4 py-2 ${j > 0 ? "text-right tabular-nums text-fg-mid" : "max-w-[16rem] truncate text-fg"}`}
+                  className={`px-4 py-2 ${j > 0 ? "text-right tabular-nums text-fg-mid" : "max-w-[20rem] truncate text-fg"}`}
                 >
                   {cell}
                 </td>
@@ -80,11 +67,8 @@ function BreakdownTable({
           ))}
           {rows.length === 0 && (
             <tr>
-              <td
-                colSpan={columns.length}
-                className="px-4 py-6 text-center text-fg-soft"
-              >
-                No data yet
+              <td colSpan={columns.length} className="px-4 py-6 text-center text-fg-soft">
+                {emptyText}
               </td>
             </tr>
           )}
@@ -96,9 +80,10 @@ function BreakdownTable({
 
 type TenderRow = {
   id: number;
+  naam: string | null;
   label: string | null;
+  score: number | null;
   status: string | null;
-  waarde: string | null;
   opdrachtgever: string | null;
   buyer_type_detected: string | null;
   cpv_main: string | null;
@@ -115,7 +100,7 @@ async function fetchAllTenders(admin: ReturnType<typeof createSupabaseAdmin>) {
     const { data } = await admin
       .from("tenders_scraped")
       .select(
-        "id,label,status,waarde,opdrachtgever,buyer_type_detected,cpv_main,scraped_at,sluiting_datum,platform"
+        "id,naam,label,score,status,opdrachtgever,buyer_type_detected,cpv_main,scraped_at,sluiting_datum,platform"
       )
       .order("id")
       .range(from, from + PAGE - 1);
@@ -126,12 +111,16 @@ async function fetchAllTenders(admin: ReturnType<typeof createSupabaseAdmin>) {
   return rows;
 }
 
+const DROPPED_OR_LOST = ["Dropped", "Lost"];
+const ACTIVE_STAGES = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
+const STAGE_ORDER = [...ACTIVE_STAGES, "Won", "Lost", "Dropped"];
+
 export default async function ReportsPage() {
   const admin = createSupabaseAdmin();
-  const [tenders, { data: pipeline }, { data: outcomes }] = await Promise.all([
+  const [tenders, { data: pipeline }, { data: feedback }] = await Promise.all([
     fetchAllTenders(admin),
     admin.from("bid_pipeline").select("tender_id,stage"),
-    admin.from("tender_feedback").select("tender_id,value").eq("kind", "outcome"),
+    admin.from("tender_feedback").select("tender_id,kind,value"),
   ]);
 
   const all = tenders;
@@ -139,72 +128,97 @@ export default async function ReportsPage() {
   const cards = (pipeline ?? []).filter((p) => byId.has(p.tender_id));
   const qualified = all.filter((t) => t.label && !["Disqualified", "Monitor"].includes(t.label));
 
-  // KPIs
-  const won = (outcomes ?? []).filter((o) => o.value === "won").length;
-  const lost = (outcomes ?? []).filter((o) => o.value === "lost").length;
-  const winRate = won + lost > 0 ? Math.round((100 * won) / (won + lost)) : null;
-  const activeStages = ["Identified", "Analysis", "Q&A", "Submitted", "Award"];
-  const activeCards = cards.filter((c) => activeStages.includes(c.stage));
-  const pipelineValue = activeCards.reduce(
-    (sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null),
-    0
-  );
-  const wonValue = cards
-    .filter((c) => c.stage === "Won")
-    .reduce((sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null), 0);
-
-  // Value & count by board stage
-  const stageOrder = ["Identified", "Analysis", "Q&A", "Submitted", "Award", "Won", "Lost", "Dropped"];
-  const byStage = stageOrder
-    .map((s) => {
-      const items = cards.filter((c) => c.stage === s);
-      const value = items.reduce(
-        (sum, c) => sum + parseValue(byId.get(c.tender_id)?.waarde ?? null),
-        0
-      );
-      return [stageLabel(s), items.length, euro(value)] as (string | number)[];
-    })
-    .filter((r) => (r[1] as number) > 0);
-
-  // Top authorities among qualified tenders
-  const authCount = new Map<string, { n: number; won: number }>();
-  const wonIds = new Set((outcomes ?? []).filter((o) => o.value === "won").map((o) => o.tender_id));
-  for (const t of qualified) {
-    const k = t.opdrachtgever ?? "Onbekend";
-    const e = authCount.get(k) ?? { n: 0, won: 0 };
-    e.n += 1;
-    if (wonIds.has(t.id)) e.won += 1;
-    authCount.set(k, e);
+  // Latest outcome/relevance feedback per tender (rows aren't deduped upstream).
+  const latestFeedback = new Map<number, { outcome?: string; relevance?: string }>();
+  for (const f of feedback ?? []) {
+    const e = latestFeedback.get(f.tender_id) ?? {};
+    if (f.kind === "outcome") e.outcome = f.value;
+    if (f.kind === "relevance") e.relevance = f.value;
+    latestFeedback.set(f.tender_id, e);
   }
-  const topAuthorities = [...authCount.entries()]
-    .sort((a, b) => b[1].n - a[1].n)
-    .slice(0, 10)
-    .map(([k, v]) => [k, v.n, v.won] as (string | number)[]);
 
-  // Domains (CPV) among qualified tenders
-  const domCount = new Map<string, { n: number; value: number }>();
+  // ---- The funnel: this is the report. Every number is a real count, never
+  // a rate computed from too few data points (DESIGN.md: "empty is normal,
+  // hide don't fake" — a 0% win rate on 1 outcome reads as failure when the
+  // honest state is "too early to have a rate").
+  const activeCards = cards.filter((c) => ACTIVE_STAGES.includes(c.stage));
+  const droppedOrLostCards = cards.filter((c) => DROPPED_OR_LOST.includes(c.stage));
+  const outcomes = (feedback ?? []).filter((f) => f.kind === "outcome");
+  const won = outcomes.filter((o) => o.value === "won").length;
+  const lost = outcomes.filter((o) => o.value === "lost").length;
+  const decided = won + lost;
+  // A percentage from one or two outcomes is exactly the misleading rate this
+  // page refuses to show ("0% win rate" off a single lost bid). Below the
+  // threshold the funnel shows the honest counts instead.
+  const MIN_OUTCOMES_FOR_RATE = 3;
+  const showWinRate = decided >= MIN_OUTCOMES_FOR_RATE;
+
+  const funnel: { label: string; value: string | number; sub?: string; href?: string }[] = [
+    { label: "Tenders scanned", value: all.length, sub: "TenderNed, all time" },
+    { label: "Qualified (Hot/Warm/Cold)", value: qualified.length, sub: "AI-scored as relevant" },
+    { label: "Moved to pipeline", value: cards.length, sub: "a human chose to act" },
+    { label: "Active right now", value: activeCards.length, sub: "Identified → Award", href: "/board" },
+  ];
+  if (showWinRate) {
+    funnel.push({
+      label: "Win rate",
+      value: `${Math.round((100 * won) / decided)}%`,
+      sub: `${won} won · ${lost} lost`,
+    });
+  } else if (decided > 0) {
+    funnel.push({
+      label: "Outcomes recorded",
+      value: decided,
+      sub: `${won} won · ${lost} lost`,
+    });
+  }
+
+  // Pipeline detail: real tenders, not just counts — management sees WHAT is being pursued.
+  const pipelineRows = cards
+    .slice()
+    .sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage))
+    .map((c) => {
+      const t = byId.get(c.tender_id);
+      return [
+        t?.naam ?? `Tender ${c.tender_id}`,
+        <LabelChip key="l" label={t?.label ?? null} score={t?.score ?? null} />,
+        stageLabel(c.stage),
+      ];
+    });
+
+  // Why tenders left the pipeline — the "why" a status count can't show.
+  const exitRows = droppedOrLostCards.map((c) => {
+    const t = byId.get(c.tender_id);
+    const fb = latestFeedback.get(c.tender_id);
+    let reason = stageLabel(c.stage);
+    if (fb?.relevance === "not_relevant") reason = "Marked not relevant (false positive)";
+    else if (fb?.outcome === "no_bid") reason = "Decided not to bid";
+    else if (fb?.outcome === "lost") reason = "Lost to competitor";
+    return [t?.naam ?? `Tender ${c.tender_id}`, <LabelChip key="l" label={t?.label ?? null} />, reason];
+  });
+
+  // Domains (CPV) among qualified tenders — supporting context.
+  const domCount = new Map<string, number>();
   for (const t of qualified) {
     const k = cpvDomain(t.cpv_main);
-    const e = domCount.get(k) ?? { n: 0, value: 0 };
-    e.n += 1;
-    e.value += parseValue(t.waarde);
-    domCount.set(k, e);
+    domCount.set(k, (domCount.get(k) ?? 0) + 1);
   }
-  const domains = [...domCount.entries()]
-    .sort((a, b) => b[1].n - a[1].n)
-    .map(([k, v]) => [k, v.n, euro(v.value)] as (string | number)[]);
+  const domainRows = [...domCount.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([label, count]) => ({ label, count }));
 
-  // Buyer types among qualified tenders
+  // Buyer types among qualified tenders — supporting context.
   const btCount = new Map<string, number>();
   for (const t of qualified) {
     const k = t.buyer_type_detected ?? "onbekend";
     btCount.set(k, (btCount.get(k) ?? 0) + 1);
   }
-  const buyerTypes = [...btCount.entries()]
+  const buyerRows = [...btCount.entries()]
     .sort((a, b) => b[1] - a[1])
-    .map(([k, v]) => [k, v] as (string | number)[]);
+    .map(([label, count]) => ({ label, count }));
 
-  // Monthly intake, last 6 months
+  // Monthly intake, last 6 months — already answers "is the system healthy
+  // and consistent", kept as-is.
   const months = new Map<string, { scanned: number; qualified: number }>();
   const now = new Date();
   for (let i = 5; i >= 0; i--) {
@@ -222,34 +236,13 @@ export default async function ReportsPage() {
       if (t.label && !["Disqualified", "Monitor"].includes(t.label)) e.qualified += 1;
     }
   }
-  const monthlyAll = [...months.entries()].map(
-    ([k, v]) => [k, v.scanned, v.qualified] as (string | number)[]
-  );
+  const monthlyAll = [...months.entries()].map(([k, v]) => ({ month: k, ...v }));
   // Trim leading months from before the scraper existed — all-zero rows read as failure.
-  const firstActive = monthlyAll.findIndex((r) => (r[1] as number) > 0);
+  const firstActive = monthlyAll.findIndex((r) => r.scanned > 0);
   const monthly = firstActive === -1 ? monthlyAll : monthlyAll.slice(firstActive);
 
   const manualCount = all.filter((t) => t.platform === "manual").length;
   const dateStr = new Date().toLocaleDateString("nl-NL", { dateStyle: "long" });
-
-  const kpis = [
-    {
-      label: "Active pipeline",
-      value: String(activeCards.length),
-      sub: "tenders on the board (New → Submitted)",
-    },
-    {
-      label: "Pipeline value",
-      value: euro(pipelineValue),
-      sub: "known contract value, active stages",
-    },
-    {
-      label: "Win rate",
-      value: winRate === null ? "—" : `${winRate}%`,
-      sub: `${won} won · ${lost} lost`,
-    },
-    { label: "Value won", value: euro(wonValue), sub: "from Won board cards" },
-  ];
 
   return (
     <div className="mx-auto max-w-5xl space-y-6">
@@ -260,53 +253,69 @@ export default async function ReportsPage() {
       />
 
       <dl className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface md:flex-row md:divide-x md:divide-y-0">
-        {kpis.map((k) => (
-          <div key={k.label} className="flex-1 px-5 py-4">
-            <dt className={microLabel}>{k.label}</dt>
-            <dd className="mt-1 text-2xl font-semibold tabular-nums text-fg">
-              {k.value}
-            </dd>
-            <dd className="mt-0.5 text-xs text-fg-soft">{k.sub}</dd>
-          </div>
+        {funnel.map((k) => (
+          <Kpi key={k.label} label={k.label} value={k.value} sub={k.sub} href={k.href} />
         ))}
       </dl>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <BreakdownTable
-          title="Tender Pipeline: count & value by stage"
-          columns={["Stage", "Tenders", "Value"]}
-          rows={byStage}
-        />
-        <BreakdownTable
-          title="Buyer types (qualified tenders)"
-          columns={["Type", "Tenders"]}
-          rows={buyerTypes}
-        />
-      </div>
+      {!showWinRate && (
+        <p className="text-xs text-fg-soft">
+          {decided === 0
+            ? "Win rate isn't shown yet — no tender has a recorded won/lost outcome."
+            : `Win rate isn't shown yet — only ${decided} decided ${decided === 1 ? "outcome" : "outcomes"} recorded.`}{" "}
+          It appears once {MIN_OUTCOMES_FOR_RATE} outcomes are in, so a single result can&apos;t
+          read as a trend.
+        </p>
+      )}
 
       <BreakdownTable
-        title="Top contracting authorities (qualified tenders)"
-        columns={["Authority", "Tenders", "Won"]}
-        rows={topAuthorities}
+        title="Pipeline: tenders being pursued"
+        columns={["Tender", "Score", "Stage"]}
+        rows={pipelineRows}
+        emptyText="No tenders on the board yet"
       />
 
+      <BreakdownTable
+        title="Left the pipeline: why"
+        columns={["Tender", "Score", "Reason"]}
+        rows={exitRows}
+        emptyText="Nothing dropped or lost yet"
+      />
+
+      <ChartCard title="Monthly intake (last 6 months)">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className={`border-b border-line text-left ${microLabel}`}>
+              <th className="py-1.5">Month</th>
+              <th className="py-1.5 text-right">Scanned</th>
+              <th className="py-1.5 text-right">Qualified</th>
+            </tr>
+          </thead>
+          <tbody>
+            {monthly.map((r) => (
+              <tr key={r.month} className="border-b border-line/40 last:border-0">
+                <td className="py-1.5 text-fg-mid">{r.month}</td>
+                <td className="py-1.5 text-right tabular-nums text-fg">{r.scanned}</td>
+                <td className="py-1.5 text-right tabular-nums text-fg">{r.qualified}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </ChartCard>
+
       <div className="grid gap-6 md:grid-cols-2">
-        <BreakdownTable
-          title="Domains (CPV, qualified tenders)"
-          columns={["Domain", "Tenders", "Value"]}
-          rows={domains}
-        />
-        <BreakdownTable
-          title="Monthly intake (last 6 months)"
-          columns={["Month", "Scanned", "Qualified"]}
-          rows={monthly}
-        />
+        <ChartCard title="Domains (qualified tenders)">
+          <HBarList rows={domainRows} showPct />
+        </ChartCard>
+        <ChartCard title="Buyer types (qualified tenders)">
+          <HBarList rows={buyerRows} showPct />
+        </ChartCard>
       </div>
 
       <p className="text-xs leading-relaxed text-fg-soft print:block">
-        Generated by CBA Tender Intelligence. Contract values reflect only
-        tenders where a value is known; TenderNed rarely publishes them, and
-        manually registered bids usually carry the real figures.
+        Generated by CBA Tender Intelligence. Contract values aren&apos;t shown here: TenderNed
+        publishes a value on well under 1% of tenders, so a value total would be misleading rather
+        than useful.
       </p>
     </div>
   );
