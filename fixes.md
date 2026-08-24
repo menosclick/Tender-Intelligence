@@ -312,3 +312,12 @@ where bp.tender_id = f.tender_id and f.kind = 'outcome'
 ```
 
 tsc + `next build` clean. Ground truth captured from SQL before deploy for a numbers-match check: scanned 2457, qualified 24, manual 4, monthly Apr 104/2 · May 662/3 · Jun 675/6 · Jul 696/9 · Aug 320/4, buyer types overig 10 / rijksoverheid 4 / onderwijs 3 / gemeente 3 / uitvoeringsorganisatie 1 / provincie 1 / intergemeentelijk 1 / grote gemeente 1, CPV 72=16 · 48=5 · 64=1 · 51=1 · none=1.
+
+**Post-deploy verification (5300318, prod, signed in):**
+- **Reports numbers match ground truth EXACTLY** — the point of a data-layer rewrite. Rendered: scanned 2457, qualified 24, "4 registered manually", monthly `2026-04 104/2 · 05 662/3 · 06 675/6 · 07 696/9 · 08 320/4` (March correctly trimmed as pre-scraper), domains IT-diensten 16 / Software 5 / Onbekend 1 / CPV 51xx 1 / CPV 64xx 1, buyer types overig 10 / rijksoverheid 4 / onderwijs 3 / gemeente 3 / uitvoeringsorganisatie 1 / grote gemeente 1 / intergemeentelijk 1 / provincie 1 (sums to 24). Every figure identical to the pre-deploy SQL. Confirms the PostgREST `not.in.(Disqualified,Monitor)` filter matches the SQL predicate.
+- **No perf regression:** reports fully-warm domComplete **394ms** vs 396ms before the rewrite. Intermediate readings of 1100-1415ms were lambda cold/warming, not the change — same page settled at 394ms on the next hit. So: same speed today, now flat as the archive grows.
+- **Inbox filter-on-change works:** setting the domain dropdown to PAM navigated to `/inbox?label=warmplus&domain=PAM` with no click, and the table filtered to exactly the 2 PAM rows.
+- Back link now reads "← Back to Tender Inbox" → `/inbox`. Feedback pills render all six values.
+- **Loading skeleton confirmed rendering** (closes the gap left this morning): mid-stream probes caught the page with content still in React's `div[hidden][id="S:0"]` Suspense container while the a11y tree exposed only the rail — i.e. the aria-hidden skeleton was on screen.
+
+**False alarm, recorded so it isn't re-investigated:** mid-stream DOM probes showed the inbox filter form unhydrated and inside the hidden `S:0` container, which looked like a hydration bug caused by the new `loading.tsx`. It was a race with streaming — re-querying after the swap showed `hydrated: true`, `visible: true`, chain `FORM < DIV < MAIN < ...`, zero hidden containers. `document.readyState === "complete"` is NOT a reliable "Suspense content swapped in" signal; assert on the element's own hydration/visibility instead.
