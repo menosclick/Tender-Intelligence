@@ -158,8 +158,13 @@ export default async function TenderDetailPage({
           <p className="mt-1.5 text-sm text-fg-mid">{t.buyer}</p>
         </div>
         <div className="shrink-0 text-right">
-          <p className="text-3xl font-semibold tabular-nums leading-none">
-            {t.score}
+          {/* Manually registered tenders carry a human-picked label and no
+              score; an empty numeral reads as a loading failure. */}
+          <p
+            className="text-3xl font-semibold tabular-nums leading-none"
+            title={t.score == null ? "Not AI-scored — registered manually" : undefined}
+          >
+            {t.score ?? "—"}
           </p>
           <div className="mt-1.5">
             <LabelChip label={t.label} />
@@ -398,7 +403,10 @@ export default async function TenderDetailPage({
                     {SCORE_DIMENSIONS_SPARSE.map(
                       (d) => `${d.label} ${breakdown[d.key] ?? 0}/${d.max} (${d.reason})`
                     ).join(" · ")}
-                    . All seven dimensions add up to 100.
+                    . The five dimensions above are worth 60 points together;
+                    the two unscored ones make up the rest of the 100-point
+                    scale on paper but score ~0 in practice, so the highest
+                    total the system realistically produces is about 62.
                   </p>
                 </>
               );

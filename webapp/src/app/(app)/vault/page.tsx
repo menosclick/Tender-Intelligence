@@ -127,9 +127,12 @@ export default async function VaultPage() {
   const rows = (tenders ?? [])
     .map((t) => ({
       t,
+      // A terminal stage (Won/Lost/Dropped) is NOT in the pipeline. It used to
+      // fall into the `?? 9` bucket, which passed the `<= 9` test below and
+      // rendered under "In the pipeline" next to its own "Dropped" chip.
       stageRank:
         t.pipeline_stage != null
-          ? STAGE_ORDER[t.pipeline_stage] ?? 9
+          ? STAGE_ORDER[t.pipeline_stage] ?? 9.5
           : 10,
     }))
     .sort(
@@ -139,7 +142,8 @@ export default async function VaultPage() {
     );
 
   const inPipeline = rows.filter((r) => r.stageRank <= 9);
-  const offBoard = rows.filter((r) => r.stageRank === 10);
+  // Closed pursuits and never-boarded tenders both belong under "Not in the pipeline".
+  const offBoard = rows.filter((r) => r.stageRank > 9);
 
   // Header counts describe what the page actually shows: only artifacts of
   // tenders the view still qualifies. A tender re-labelled Disqualified keeps

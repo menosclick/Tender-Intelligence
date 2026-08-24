@@ -54,7 +54,10 @@ export default async function DashboardPage() {
         .select(
           "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products"
         )
-        .gte("days_to_deadline", 0)
+        // A tender with no published deadline is still open — the pipeline's own
+        // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
+        // filtering on gte alone silently dropped qualified tenders from the app.
+        .or("days_to_deadline.gte.0,days_to_deadline.is.null")
         .order("score", { ascending: false }),
       admin.from("tender_feedback").select("tender_id,value").eq("kind", "relevance"),
       admin.from("bid_pipeline").select("tender_id,stage"),

@@ -160,6 +160,7 @@ export default async function ReportsPage() {
     scannedCount,
     qualifiedCount,
     manualCount,
+    manualQualifiedCount,
     qualifiedRows,
     { data: pipeline },
     { data: feedback },
@@ -168,6 +169,7 @@ export default async function ReportsPage() {
     countTenders(admin),
     countTenders(admin, { qualified: true }),
     countTenders(admin, { manual: true }),
+    countTenders(admin, { qualified: true, manual: true }),
     fetchQualified(admin),
     admin.from("bid_pipeline").select("tender_id,stage"),
     admin.from("tender_feedback").select("tender_id,kind,value"),
@@ -194,7 +196,8 @@ export default async function ReportsPage() {
   const byId = new Map((cardTenders ?? []).map((t) => [t.id, t]));
   const cards = (pipeline ?? []).filter((p) => byId.has(p.tender_id));
 
-  // Latest outcome/relevance feedback per tender (rows aren't deduped upstream).
+  // One row per (tender, kind) — tender_feedback_tender_id_kind_key enforces
+  // it, so this collapse is exact rather than a "last one wins" guess.
   const latestFeedback = new Map<number, { outcome?: string; relevance?: string }>();
   for (const f of feedback ?? []) {
     const e = latestFeedback.get(f.tender_id) ?? {};
@@ -220,8 +223,17 @@ export default async function ReportsPage() {
   const showWinRate = decided >= MIN_OUTCOMES_FOR_RATE;
 
   const funnel: { label: string; value: string | number; sub?: string; href?: string }[] = [
-    { label: "Tenders scanned", value: scannedCount, sub: "TenderNed, all time" },
-    { label: "Qualified (Hot/Warm/Cold)", value: qualifiedCount, sub: "AI-scored as relevant" },
+    { label: "Tenders scanned", value: scannedCount, sub: "all sources, all time" },
+    {
+      label: "Qualified (Hot/Warm/Cold)",
+      value: qualifiedCount,
+      // Manually registered tenders carry a human-picked label and no score.
+      // Counting them silently inside "AI-scored" overstated what the AI did.
+      sub:
+        manualQualifiedCount > 0
+          ? `AI-scored, incl. ${manualQualifiedCount} registered by hand`
+          : "AI-scored as relevant",
+    },
     { label: "Moved to pipeline", value: cards.length, sub: "a human chose to act" },
     { label: "Active right now", value: activeCards.length, sub: "Identified → Award", href: "/board" },
   ];

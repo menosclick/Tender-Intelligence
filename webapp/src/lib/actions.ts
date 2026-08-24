@@ -231,10 +231,20 @@ export async function addMilestone(tenderId: number, formData: FormData) {
 
   const admin = createSupabaseAdmin();
   // One row per (tender, kind): re-adding a kind corrects its date/note.
-  // A typed-in date always wins over an extracted one, so source flips to
-  // manual on conflict — the human is the authority on the planning table.
+  // A typed-in date wins over an extracted one — the human is the authority on
+  // the planning table — but overriding must not DESTROY what the extractor
+  // found. Blank note used to null out the note quoted from the tender
+  // documents, so an override silently erased its own provenance.
+  const { data: existing } = await admin
+    .from("tender_milestones")
+    .select("note,source")
+    .eq("tender_id", tenderId)
+    .eq("kind", kind)
+    .maybeSingle();
+  const keptNote = note ?? existing?.note ?? null;
+
   const { error } = await admin.from("tender_milestones").upsert(
-    { tender_id: tenderId, kind, milestone_date: date, note, source: "manual" },
+    { tender_id: tenderId, kind, milestone_date: date, note: keptNote, source: "manual" },
     { onConflict: "tender_id,kind" }
   );
   if (error) throw new Error(error.message);

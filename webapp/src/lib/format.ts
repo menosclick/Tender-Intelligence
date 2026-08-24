@@ -48,9 +48,14 @@ export const SCORE_DIMENSIONS: {
   desc: string;
 }[] = [
   {
+    // The rules file declares a weight of 30, but stage 2 caps the AI fit
+    // verdict at 15 (High 15 / Medium 8 / Low 2) so it REPLACES the provisional
+    // constant rather than doubling it — no tender has ever scored above 15 on
+    // d1. Displaying it out of 30 halved every bar and made a perfect fit read
+    // as "moderate", which inverted the weakest-signal sentence below it.
     key: "d1",
     label: "Product fit",
-    max: 30,
+    max: 15,
     desc: "How clearly the tender maps to ManageEngine products",
   },
   {

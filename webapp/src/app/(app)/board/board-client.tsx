@@ -3,7 +3,7 @@
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
 import { moveCard, updateCard, removeCard } from "@/lib/actions";
-import { BOARD_STAGES, stageLabel, type BoardStage } from "@/lib/format";
+import { BOARD_STAGES, deadlineClass, stageLabel, type BoardStage } from "@/lib/format";
 import { LabelChip, btnPrimary, inputCls } from "@/lib/ui";
 
 export type BoardCard = {
@@ -107,18 +107,12 @@ export function BoardClient({ cards }: { cards: BoardCard[] }) {
                     <div className="mt-2 flex items-center gap-2 text-xs">
                       {c.label && <LabelChip label={c.label} score={c.score} />}
                       {c.deadline && (
-                        <span
-                          className={
-                            (c.daysToDeadline ?? 99) < 14
-                              ? "font-semibold tabular-nums text-hot"
-                              : "tabular-nums text-fg-soft"
-                          }
-                        >
+                        <span className={`tabular-nums ${deadlineClass(c.daysToDeadline)}`}>
                           {c.daysToDeadline !== null && c.daysToDeadline >= 0
                             ? c.daysToDeadline > 365
                               ? "long-term"
                               : `${c.daysToDeadline}d left`
-                            : c.deadline}
+                            : `${c.deadline} · closed`}
                         </span>
                       )}
                       {c.assignee && (

@@ -340,3 +340,34 @@ A migration touching the scraper-owned `tenders_scraped` plus a live n8n workflo
 A `generated always as (raw_json::json->...)` column was also rejected: `raw_json` is untrusted text and one malformed blob would break every scraper INSERT.
 
 **Revisit threshold:** this becomes worth fixing at roughly 100+ concurrently-open tenders (~300 kB/view), or if `raw_json` is ever migrated to `jsonb` for other reasons — at which point the PostgREST projection becomes a one-line change. Not before.
+
+---
+
+## 2026-08-24 (5) — Fresh-eyes audit findings fixed (independent sub-agent, then re-verified)
+
+An independent audit agent was given the spec (PRODUCT.md / DESIGN.md / README golden rules) and read-only DB access, deliberately NOT told what had been changed this session. Its findings were re-verified before acting on any of them — one at a time, against the live database.
+
+**1. The "Why this score" panel named the WRONG weakest dimension (major).** `format.ts` declared `d1` (Product fit) `max: 30`. `scoring/scoring_rules.json` declares weight 30 but caps stage 2 at `{High:15, Medium:8, Low:2}` "so the AI fit verdict replaces (not doubles) the provisional constant". Verified independently: across all 24 scored rows **d1 never exceeds 15**; highest total score in the system is 60. Consequences proven on real tenders:
+- **7409** (highest-scoring tender, d1=15 = perfect fit): UI ratio 15/30 = 0.50, the lowest of its five dimensions → page printed *"weakest: product fit"* about a **perfect** product fit.
+- **6855**: UI d1 8/30=0.27 vs d4 5/15=0.33 → named product fit; true d1 8/15=0.53 vs 0.33 → real weakest is **authority type**. The sentence named the wrong dimension.
+Fixed `max: 15`. Also corrected the footer's "All seven dimensions add up to 100" — the reachable total is ~62, which the rules file itself states.
+
+**2. Qualified tenders with no published deadline were invisible everywhere (major).** Inbox and dashboard both filtered `.gte("days_to_deadline", 0)`; PostgREST `gte` is never true for NULL. The pipeline's own `v_pipeline_active` uses `(sluiting_datum IS NULL OR sluiting_datum >= CURRENT_DATE)` — the app silently narrowed it. Two **Warm** tenders (8416, 8417, Rijkswaterstaat) were dropped from the Inbox, its header count, "Open qualified", "Latest qualified", the domain chart and the map. Fixed with `.or("days_to_deadline.gte.0,days_to_deadline.is.null")`, verified against SQL through the real REST endpoint: old filter 15 rows, new filter 17, null-deadline 2 — exact match.
+
+**3. Reports called hand-labelled tenders "AI-scored" (major).** 4 of the 24 "Qualified (Hot/Warm/Cold) · AI-scored as relevant" have a human-picked label and `score IS NULL` — 17% of the headline figure on the page management prints. Sub-label now reads "AI-scored, incl. N registered by hand". "Tenders scanned · TenderNed, all time" also counted 4 manual + 1 Mercell row → now "all sources, all time".
+
+**4. Document Vault filed closed pursuits under "In the pipeline" (major).** `STAGE_ORDER[stage] ?? 9` put Won/Lost/Dropped in the `<= 9` bucket. Four Dropped tenders (4232, 6169, 6888, 8606) rendered under the heading "In the pipeline" directly above their own "Dropped" chip. Terminal stages now rank 9.5 and fall to "Not in the pipeline".
+
+**5. The kanban painted dead deadlines as most-urgent (major).** `(c.daysToDeadline ?? 99) < 14` is satisfied by negatives, so expired tenders got bold red with no "(closed)" marker — 6761 (-185d), 6760 (-62d), 4232 (-12d). Now uses the shared `deadlineClass` like every other surface, and says "· closed".
+
+**6. `addMilestone` destroyed n8n-extracted provenance (major).** It upserted `source:'manual'` with a null note over rows the Leidraad extractor owns — all 36 `tender_milestones` rows are `source='documents'`, 21 of them on kinds the manual form offers. Overriding a date blanked the note quoted from the tender documents and downgraded it from "Official" to "Internal" on the Calendar. `removeMilestone` already guarded these rows; this path did not. Now preserves the existing note when the new one is blank.
+
+**7. Manual tenders rendered an empty 3xl score numeral.** Now shows "—" with a title explaining it was registered manually rather than AI-scored.
+
+Also fixed a stale comment claiming `tender_feedback` rows "aren't deduped upstream" (a UNIQUE (tender_id, kind) constraint exists).
+
+`tsc --noEmit` clean, `next build` compiled successfully.
+
+**NOT fixed — needs Derson (security, finding 6 of the audit):** RLS policies grant the `authenticated` role blanket access — `SELECT` on `tenders_scraped`/`bid_packs`/`bid_verdicts` and **ALL** on `bid_pipeline`, `tender_feedback`, `scoring_suggestions`, `score_overrides`. `ALLOWED_EMAILS` is enforced only in Next.js middleware, so it does not reach the database: any holder of an `authenticated` JWT for this project could call the Supabase REST API directly and read every tender and bid pack, or write their own score overrides. Severity turns entirely on **whether email signup is enabled** on the Supabase project (2 accounts exist, both created 2026-07-06) — that setting could not be read over SQL and was not tested. Requires a dashboard check + RLS tightening; both are writes that the permission classifier blocks.
+
+**Still open from earlier:** the 4232/6888 outcome backfill (audit independently found the same divergence), and the duplicate manual rows 8416/8417 (same tender registered twice, 4s apart — `external_id = manual-<timestamp>` makes UNIQUE unable to catch it). Both need DB writes.
