@@ -12,7 +12,11 @@
   --color-line-strong: oklch(0.84 0.012 195);
   --color-fg: oklch(0.26 0.02 210);
   --color-fg-mid: oklch(0.45 0.015 210);
-  --color-fg-soft: oklch(0.55 0.012 210);
+  /* 0.51, not 0.55: PRODUCT.md commits to WCAG AA, and at 0.55 this token
+     measured 3.93-4.24:1 on every tinted surface (cold/hot/warm/ok/accent-soft
+     and sunken) — under the 4.5 bar, worst inside the verdict boxes where the
+     quoted-evidence text lives. 0.51 clears AA on all of them (min 4.66). */
+  --color-fg-soft: oklch(0.51 0.012 210);
 
   /* Navigation rail: the one committed color surface. */
   --color-rail: oklch(0.27 0.03 210);

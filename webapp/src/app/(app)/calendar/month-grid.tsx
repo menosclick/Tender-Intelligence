@@ -136,7 +136,7 @@ export function MonthGrid({
                       ) : (
                         <span
                           className={`text-xs tabular-nums ${
-                            cell.inMonth ? "text-fg-mid" : "text-fg-soft/60"
+                            cell.inMonth ? "text-fg-mid" : "text-fg-soft"
                           }`}
                         >
                           {cell.day}

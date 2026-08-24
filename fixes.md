@@ -382,3 +382,19 @@ Also fixed a stale comment claiming `tender_feedback` rows "aren't deduped upstr
 - **NOT verified live:** the `addMilestone` note-preservation fix — proving it requires writing a milestone over an extractor-owned row in the client's production DB. Code-verified only.
 
 **Probe note (second time this session):** `document.body.innerText` can miss streamed Suspense content even after `readyState === "complete"`; two probes returned "not found" for text that a screenshot and direct DOM inspection both showed present. Poll on a specific rendered element, not on body text.
+
+---
+
+## 2026-08-24 (6) — WCAG AA contrast fix + security thread closed
+
+**Contrast (audit finding 11).** Recomputed independently from the OKLCH tokens (OKLCH → OKLab → linear sRGB → relative luminance → WCAG ratio) rather than trusting the audit's figures — they matched: `text-fg-soft` at L=0.55 measured **3.93–4.24:1** on every tinted surface (cold-soft 3.93, accent-soft 4.09, hot-soft 4.14, warm-soft 4.17, ok-soft 4.22, sunken 4.24), all under the 4.5 AA bar PRODUCT.md commits to. It passed only on `surface` (4.76) and `canvas` (4.52). Worst placement was inside the verdict boxes, on the quoted-from-documents provenance text.
+
+Fixed at the token rather than the call sites, so every usage is covered at once: `--color-fg-soft` 0.55 → **0.51**. Swept the candidates — 0.52 still fails (4.46 on cold-soft), 0.51 clears everything (min **4.66**). Hierarchy still reads: fg 0.26 / fg-mid 0.45 / fg-soft 0.51.
+
+Separately, `text-fg-soft/60` on the calendar's out-of-month day numbers measured **2.30:1** — opacity on an already-marginal token, unrescuable by darkening. Now full `fg-soft`, still visibly muted against the `fg-mid` used for in-month days. Verified no other `fg-soft/<opacity>` usage exists in `src/`. DESIGN.md records the value and the "never apply opacity to this token" rule.
+
+**Security thread closed (advisor `function_search_path_mutable`).** Checked `pg_proc.prosecdef` for all six flagged functions — `approve_suggestion`, `reject_suggestion`, `generate_scoring_suggestions`, `get_score_adjustment`, `update_updated_at`, `bid_pipeline_touch`: **none is SECURITY DEFINER**, all run as the caller with no `proconfig`. The mutable `search_path` warning is therefore cosmetic, not a privilege-escalation path. No action needed.
+
+**Also surfaced by the advisor, not actioned (needs dashboard access):** leaked-password protection is disabled (Auth → Password security). Five unrelated tables (`articles`, `content_log`, `content_queue`, `video_scripts`, `videos`) have RLS enabled with zero policies — that denies all non-service-role access, so it fails safe, but they are not this app's tables.
+
+**STILL BLOCKED on Derson:** (1) whether email signup is enabled — decides whether the `authenticated`-role RLS grants are a live hole or defence-in-depth; (2) the 4232/6888 outcome backfill; (3) the duplicate rows 8416/8417.

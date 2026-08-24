@@ -14,7 +14,7 @@ Light, always. Users read Dutch procurement prose in a bright office. One commit
 | `surface` | `oklch(0.995 0.002 195)` | tables, cards, inputs |
 | `sunken` | `oklch(0.955 0.006 195)` | board columns, quotes, wells |
 | `line` / `line-strong` | `oklch(0.90 0.008 195)` / `oklch(0.84 0.012 195)` | borders |
-| `fg` / `fg-mid` / `fg-soft` | `oklch(0.26 0.02 210)` / `oklch(0.45 0.015 210)` / `oklch(0.55 0.012 210)` | text hierarchy |
+| `fg` / `fg-mid` / `fg-soft` | `oklch(0.26 0.02 210)` / `oklch(0.45 0.015 210)` / `oklch(0.51 0.012 210)` | text hierarchy. `fg-soft` is pinned at 0.51 so it clears WCAG AA (4.5:1) on the tinted `*-soft` surfaces and `sunken`, not just on `surface`/`canvas`. Never apply opacity to it — `fg-soft/60` measures 2.3:1. |
 | `rail` / `rail-hover` / `rail-active` | `oklch(0.27 0.03 210)` / `oklch(0.33 0.03 210)` / `oklch(0.42 0.06 195)` | sidebar |
 | `rail-fg` / `rail-fg-soft` | `oklch(0.93 0.006 195)` / `oklch(0.72 0.015 200)` | sidebar text |
 | `accent` / `accent-strong` | `oklch(0.48 0.08 195)` / `oklch(0.42 0.08 195)` | primary actions, focus |
