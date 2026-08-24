@@ -371,3 +371,14 @@ Also fixed a stale comment claiming `tender_feedback` rows "aren't deduped upstr
 **NOT fixed — needs Derson (security, finding 6 of the audit):** RLS policies grant the `authenticated` role blanket access — `SELECT` on `tenders_scraped`/`bid_packs`/`bid_verdicts` and **ALL** on `bid_pipeline`, `tender_feedback`, `scoring_suggestions`, `score_overrides`. `ALLOWED_EMAILS` is enforced only in Next.js middleware, so it does not reach the database: any holder of an `authenticated` JWT for this project could call the Supabase REST API directly and read every tender and bid pack, or write their own score overrides. Severity turns entirely on **whether email signup is enabled** on the Supabase project (2 accounts exist, both created 2026-07-06) — that setting could not be read over SQL and was not tested. Requires a dashboard check + RLS tightening; both are writes that the permission classifier blocks.
 
 **Still open from earlier:** the 4232/6888 outcome backfill (audit independently found the same divergence), and the duplicate manual rows 8416/8417 (same tender registered twice, 4s apart — `external_id = manual-<timestamp>` makes UNIQUE unable to catch it). Both need DB writes.
+
+**Post-deploy verification (52c9cf3, prod, signed in):**
+- **Score explanation, tender 7409** — now reads *"Strongest signal: product fit (15/15) · weakest: authority type (13/15)."* Before the fix it said *"weakest: product fit (15/30)"* about a perfect fit. The dimension row shows "15/15 STRONG" (was "15/30 MODERATE"). Footer now states the reachable ~62 total instead of claiming 100.
+- **Null-deadline tenders recovered** — `/inbox?label=all` renders 14 rows including BOTH Rijkswaterstaat rows (8416, 8417) that were previously invisible on every surface.
+- **Reports** — "TENDERS SCANNED 2457 · all sources, all time" and "QUALIFIED 24 · AI-scored, incl. 4 registered by hand".
+- **Vault** — headings now "In the pipeline · 4" / "Not in the pipeline · 7" (was 7 / 4). Zero Dropped chips above the divider; all 7 cards below render correctly with their stage chips intact (first: ESM Platform / TU Eindhoven / Dropped).
+- **Board** — the three expired cards (2026-02-20, 2026-06-23, 2026-08-12) render muted `text-fg-soft` with "· closed" appended. None carries `text-hot`. Before, all three were bold red.
+- **Manual score** — tender 6760 renders "—" with title "Not AI-scored — registered manually".
+- **NOT verified live:** the `addMilestone` note-preservation fix — proving it requires writing a milestone over an extractor-owned row in the client's production DB. Code-verified only.
+
+**Probe note (second time this session):** `document.body.innerText` can miss streamed Suspense content even after `readyState === "complete"`; two probes returned "not found" for text that a screenshot and direct DOM inspection both showed present. Poll on a specific rendered element, not on body text.
