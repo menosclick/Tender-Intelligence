@@ -398,3 +398,23 @@ Separately, `text-fg-soft/60` on the calendar's out-of-month day numbers measure
 **Also surfaced by the advisor, not actioned (needs dashboard access):** leaked-password protection is disabled (Auth → Password security). Five unrelated tables (`articles`, `content_log`, `content_queue`, `video_scripts`, `videos`) have RLS enabled with zero policies — that denies all non-service-role access, so it fails safe, but they are not this app's tables.
 
 **STILL BLOCKED on Derson:** (1) whether email signup is enabled — decides whether the `authenticated`-role RLS grants are a live hole or defence-in-depth; (2) the 4232/6888 outcome backfill; (3) the duplicate rows 8416/8417.
+
+---
+
+## 2026-08-24 (7) — Remaining audit findings cleared
+
+**Board stage vs recorded outcome could still diverge (audit 9).** `recordFeedback` only moved the card for terminal outcomes, so clicking "Bidding" on a tender whose card sat in Won/Lost/Dropped left the board and the tender page asserting different facts (live: 4232, 6888). "bidding" names three stages so it can't pick one — but reopening a *closed* pursuit is unambiguous, so it now moves a terminal card to Q&A and leaves working-stage cards untouched.
+
+**Duplicate manual registration is now caught.** `external_id` is minted from `Date.now()`, so the UNIQUE index could never catch a resubmit — 8416/8417 are the same Rijkswaterstaat tender registered 4 seconds apart. `createManualTender` now matches on name + authority and refuses with the existing tender's id, suggesting how to proceed if it is genuinely a different lot.
+
+**"Run learning" no longer discards silently (audit 8).** `generate_scoring_suggestions()` DELETEs every pending row first; the button said only "Run learning". It now confirms, naming how many undecided suggestions will be replaced and that any whose pattern has dropped below threshold will not return.
+
+**`t.url` is validated like the AI-written URL (audit 13).** `safeHttpUrl()` moved into `lib/format.ts` and applied to the TenderNed link on both the detail page and the vault. Not a live exploit (React blocks `javascript:`), but `url` comes from third-party data and from the manual form whose `type="url"` is client-side only — and the AI-written URL 20 lines away was already validated. Same rule for both writers now.
+
+**Inbox header counted a different population than its table (audit 12).** It reported all labels and shifted whenever a search was typed. Now reports the rows actually shown and flags when a filter is active.
+
+**Map region truncation disclosed (audit 14).** Only `nuts[0]` is pinned; the caption now states how many tenders list more than one region instead of implying precision it does not have.
+
+**Stale comments corrected (audit 15).** `supabase/server.ts` still claimed the admin client "reads only, except writes to bid_pipeline" — it now lists the real write surface. Removed the unreachable `Math.min(n, MIN_SIGNALS)` clamp on the learning page. DESIGN.md's token table gained the `*-line`, `rail-line` and `*-vivid` tokens that exist in `globals.css` and are used in components.
+
+tsc clean, `next build` compiled successfully.

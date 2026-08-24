@@ -81,7 +81,7 @@ export default async function LearningPage() {
       <PageHeader
         title="Learning"
         sub="The system proposes scoring improvements from real outcomes. You approve what goes live."
-        actions={<RunLearningButton />}
+        actions={<RunLearningButton pendingCount={pendingRows.length} />}
       />
 
       <div className="mt-5 flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface sm:flex-row sm:divide-x sm:divide-y-0">
@@ -115,7 +115,7 @@ export default async function LearningPage() {
                   <div key={desc} className="flex items-center justify-between gap-3">
                     <span className="truncate">{desc}</span>
                     <span className="shrink-0 tabular-nums text-fg-mid">
-                      {Math.min(n, MIN_SIGNALS)} of {MIN_SIGNALS}
+                      {n} of {MIN_SIGNALS}
                     </span>
                   </div>
                 ))}

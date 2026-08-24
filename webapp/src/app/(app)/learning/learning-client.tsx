@@ -58,14 +58,25 @@ export function SuggestionCard({ suggestion: s }: { suggestion: Suggestion }) {
   );
 }
 
-export function RunLearningButton() {
+export function RunLearningButton({ pendingCount = 0 }: { pendingCount?: number }) {
   const [pending, startTransition] = useTransition();
+  // generate_scoring_suggestions() starts by deleting every pending row, so
+  // re-running discards anything still awaiting a decision. Most are
+  // re-derived, but one whose pattern has since dropped below the threshold is
+  // gone for good — so say it before it happens rather than after.
+  function run() {
+    if (
+      pendingCount > 0 &&
+      !window.confirm(
+        `Re-running replaces the ${pendingCount} suggestion${pendingCount === 1 ? "" : "s"} waiting for a decision. ` +
+          "Any whose pattern no longer clears the threshold will not come back. Continue?"
+      )
+    )
+      return;
+    startTransition(() => runLearning());
+  }
   return (
-    <button
-      disabled={pending}
-      onClick={() => startTransition(() => runLearning())}
-      className={btnSecondary}
-    >
+    <button disabled={pending} onClick={run} className={btnSecondary}>
       {pending ? "Analyzing…" : "Run learning"}
     </button>
   );

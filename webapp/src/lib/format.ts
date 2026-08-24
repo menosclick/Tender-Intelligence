@@ -1,5 +1,13 @@
 // Shared display helpers.
 
+// Only ever link http(s). `url` reaches us from third-party TenderNed data and
+// from the manual-registration form (whose type="url" is client-side only), so
+// it is not a trusted writer. React blocks javascript: hrefs today — this does
+// not depend on that.
+export function safeHttpUrl(url: unknown): string | null {
+  return typeof url === "string" && /^https?:\/\//i.test(url) ? url : null;
+}
+
 // Calendar-day difference (deadline date − today), timezone-stable.
 // Both sides normalized to local midnight so time-of-day never shifts the count.
 // Use this everywhere instead of ad-hoc Date.parse math so all screens agree.

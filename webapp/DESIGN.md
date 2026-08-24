@@ -23,6 +23,9 @@ Light, always. Users read Dutch procurement prose in a bright office. One commit
 | `warm` / `warm-soft` | `oklch(0.47 0.11 70)` / `oklch(0.95 0.04 85)` | Warm label, warnings |
 | `cold` / `cold-soft` | `oklch(0.45 0.02 240)` / `oklch(0.93 0.008 240)` | Cold label |
 | `ok` / `ok-soft` | `oklch(0.42 0.10 150)` / `oklch(0.95 0.03 150)` | success, Won, bid verdict |
+| `hot-line` / `warm-line` / `ok-line` | `oklch(0.85 0.06 25)` / `oklch(0.86 0.07 85)` / `oklch(0.85 0.05 150)` | borders on the matching tinted fills (verdict boxes, banners) |
+| `rail-line` | `oklch(0.35 0.025 210)` | dividers inside the navigation rail |
+| `hot-vivid` / `warm-vivid` / `ok-vivid` | `oklch(0.68 0.19 25)` / `oklch(0.78 0.13 80)` / `oklch(0.72 0.14 150)` | status dots on the dark rail, where the muted variants disappear |
 
 Rules: no pure `#fff`/`#000`; urgency and labels always pair color with text; full borders or background tints, never colored left-edge stripes.
 

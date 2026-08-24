@@ -35,7 +35,10 @@ export async function createSupabaseServer() {
 /**
  * Admin client (service role) — SERVER ONLY. Bypasses RLS.
  * Use for: reading v_app_tenders / tenders_scraped freshness.
- * GOLDEN RULE: reads only, except writes to bid_pipeline.
+ * GOLDEN RULE: never updates or deletes rows the n8n pipeline owns. It writes
+ * only app-owned tables — bid_pipeline, tender_feedback, tender_milestones,
+ * tender_actions — plus INSERTs into tenders_scraped gated to
+ * platform='manual' (status pre-set to 'analyzed' so the pipeline skips them).
  */
 export function createSupabaseAdmin() {
   return createClient(

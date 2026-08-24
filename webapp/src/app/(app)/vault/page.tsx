@@ -218,9 +218,9 @@ export default async function VaultPage() {
                   </li>
                 ))}
               </ul>
-              {t.url && (
+              {safeHttpUrl(t.url) && (
                 <a
-                  href={t.url}
+                  href={safeHttpUrl(t.url)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="mt-1.5 inline-block text-xs font-medium text-accent-fg hover:underline"

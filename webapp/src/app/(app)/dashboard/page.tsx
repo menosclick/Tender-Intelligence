@@ -142,9 +142,13 @@ export default async function DashboardPage() {
   const otherRegions: MapTender[] = [];
   let nationalCount = 0;
   let noDataCount = 0;
+  // A tender can be published for several regions; only the first is pinned,
+  // so the map says how many it is simplifying rather than implying precision.
+  let multiRegionCount = 0;
   for (const t of openRows) {
     const nuts = parseNutsCodes(extrasById.get(t.id)?.raw_json ?? null);
     const entry = nuts[0];
+    if (nuts.length > 1) multiRegionCount++;
     if (!entry) {
       noDataCount++;
       continue;
@@ -473,6 +477,7 @@ export default async function DashboardPage() {
             nationalCount={nationalCount}
             otherRegions={otherRegions}
             noDataCount={noDataCount}
+            multiRegionCount={multiRegionCount}
           />
         </ChartCard>
       </div>

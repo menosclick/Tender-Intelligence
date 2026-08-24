@@ -159,6 +159,23 @@ export async function createManualTender(formData: FormData) {
   if (!stage && outcome === "lost") stage = "Lost";
 
   const admin = createSupabaseAdmin();
+
+  // external_id is minted from Date.now(), so the UNIQUE index can never catch
+  // a resubmit — tenders 8416/8417 are the same tender registered 4s apart.
+  // Match on what a human would call the same tender instead.
+  const { data: clash } = await admin
+    .from("tenders_scraped")
+    .select("id")
+    .ilike("naam", naam)
+    .ilike("opdrachtgever", opdrachtgever)
+    .limit(1)
+    .maybeSingle();
+  if (clash)
+    throw new Error(
+      `"${naam}" is already registered for ${opdrachtgever} (tender #${clash.id}). ` +
+        "If this is a different lot, add what distinguishes it to the name."
+    );
+
   const { data: row, error } = await admin
     .from("tenders_scraped")
     .insert({
@@ -365,6 +382,24 @@ export async function recordFeedback(
       .update({ stage: FINAL_STAGE[value] })
       .eq("tender_id", tenderId);
     revalidatePath("/board");
+  } else if (kind === "outcome" && value === "bidding") {
+    // "bidding" names three stages, so it can't pick one — but leaving a card
+    // in Won/Lost/Dropped while the tender page shows "Bidding" makes the two
+    // surfaces assert different facts about the same tender. Reopening a
+    // closed pursuit lands it in Q&A, the first stage that means "bidding";
+    // a card already in a working stage is left exactly where it is.
+    const { data: card } = await admin
+      .from("bid_pipeline")
+      .select("stage")
+      .eq("tender_id", tenderId)
+      .maybeSingle();
+    if (card && ["Won", "Lost", "Dropped"].includes(card.stage)) {
+      await admin
+        .from("bid_pipeline")
+        .update({ stage: "Q&A" })
+        .eq("tender_id", tenderId);
+      revalidatePath("/board");
+    }
   }
   revalidatePath("/dashboard");
   revalidatePath("/inbox");

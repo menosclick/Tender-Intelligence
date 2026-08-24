@@ -124,13 +124,18 @@ export default async function InboxPage({
 
   const filtersActive = label !== "warmplus" || buyer !== "" || domain !== "" || due !== "" || q !== "";
 
+  // Describes what the table below actually shows. The old count spanned all
+  // labels and moved whenever a search was typed, so the header and the rows
+  // under it described different sets.
+  const subtitle = `${rows.length} tender${rows.length === 1 ? "" : "s"} shown${
+    filtersActive ? " (filtered)" : ""
+  }${hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""} — qualify them into the pipeline or hide them.`;
+
   return (
     <div className="mx-auto max-w-5xl">
       <PageHeader
         title="Tender Inbox"
-        sub={`${visible.length} open tender${visible.length === 1 ? "" : "s"}${
-          hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""
-        } — qualify them into the pipeline or hide them.`}
+        sub={subtitle}
         actions={
           <Link href="/tender/new" className={btnSecondary}>
             Add tender

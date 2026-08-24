@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
 import {
+  safeHttpUrl,
   deadlineText,
   deadlineClass,
   SCORE_DIMENSIONS,
@@ -198,9 +199,9 @@ export default async function TenderDetailPage({
         </p>
       )}
       <div className="mt-5 flex gap-2">
-        {t.url && (
+        {safeHttpUrl(t.url) && (
           <a
-            href={t.url}
+            href={safeHttpUrl(t.url)!}
             target="_blank"
             rel="noopener noreferrer"
             className={btnSecondary}

@@ -70,11 +70,13 @@ export function NetherlandsMap({
   nationalCount,
   otherRegions,
   noDataCount = 0,
+  multiRegionCount = 0,
 }: {
   provinces: ProvinceBucket[];
   nationalCount: number;
   otherRegions: MapTender[]; // NUTS codes outside the known table
   noDataCount?: number; // tenders whose publication carries no NUTS data
+  multiRegionCount?: number; // published for several regions, pinned to the first
 }) {
   const byProvince = new Map(provinces.map((p) => [p.province, p.tenders]));
   const regional = provinces.reduce((n, p) => n + p.tenders.length, 0);
@@ -184,6 +186,8 @@ export function NetherlandsMap({
         Locations come from the TenderNed publication&apos;s NUTS region (place
         of performance as published) — buyer addresses are never shown as
         project locations.
+        {multiRegionCount > 0 &&
+          ` ${multiRegionCount} tender${multiRegionCount === 1 ? " lists" : "s list"} more than one region; each is pinned to the first.`}
       </p>
     </div>
   );
