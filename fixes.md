@@ -321,3 +321,22 @@ tsc + `next build` clean. Ground truth captured from SQL before deploy for a num
 - **Loading skeleton confirmed rendering** (closes the gap left this morning): mid-stream probes caught the page with content still in React's `div[hidden][id="S:0"]` Suspense container while the a11y tree exposed only the rail — i.e. the aria-hidden skeleton was on screen.
 
 **False alarm, recorded so it isn't re-investigated:** mid-stream DOM probes showed the inbox filter form unhydrated and inside the hidden `S:0` container, which looked like a hydration bug caused by the new `loading.tsx`. It was a race with streaming — re-querying after the swap showed `hydrated: true`, `visible: true`, chain `FORM < DIV < MAIN < ...`, zero hidden containers. `document.readyState === "complete"` is NOT a reliable "Suspense content swapped in" signal; assert on the element's own hydration/visibility instead.
+
+---
+
+## 2026-08-24 (4) — Dashboard raw_json/NUTS: measured, and deliberately NOT changed
+
+Last open item from the webapp analysis. The dashboard fetches `raw_json` for every open tender each pageview and `JSON.parse`s it purely to read `nutsCodes[0]` for the Netherlands map. I offered a DB column + n8n pipeline change to store the parsed code. **Measured first — it does not justify the change:**
+
+- 15 open tenders · **43 kB total** raw_json · avg 2,953 bytes/row · max 4,397 bytes. Column type is `text`, not jsonb.
+- Dashboard warm domComplete is 436 ms, dominated by round trips, not by 43 kB of body.
+
+A migration touching the scraper-owned `tenders_scraped` plus a live n8n workflow, to save 43 kB, is a bad trade. **Not done.**
+
+**Cheap alternative also tested and rejected —** PostgREST JSON projection so only the extracted value crosses the wire:
+- `select=id,nuts:raw_json->nutsCodes` → returns `{"nuts":null}` **silently**, no error, because the column is `text` not `json`/`jsonb`. Shipping this unverified would have emptied the map with no failure signal.
+- `select=id,nuts:raw_json::json->nutsCodes` → `PGRST100` parse error; PostgREST won't accept a cast in a JSON path.
+
+A `generated always as (raw_json::json->...)` column was also rejected: `raw_json` is untrusted text and one malformed blob would break every scraper INSERT.
+
+**Revisit threshold:** this becomes worth fixing at roughly 100+ concurrently-open tenders (~300 kB/view), or if `raw_json` is ever migrated to `jsonb` for other reasons — at which point the PostgREST projection becomes a one-line change. Not before.
