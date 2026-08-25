@@ -418,3 +418,12 @@ Separately, `text-fg-soft/60` on the calendar's out-of-month day numbers measure
 **Stale comments corrected (audit 15).** `supabase/server.ts` still claimed the admin client "reads only, except writes to bid_pipeline" — it now lists the real write surface. Removed the unreachable `Math.min(n, MIN_SIGNALS)` clamp on the learning page. DESIGN.md's token table gained the `*-line`, `rail-line` and `*-vivid` tokens that exist in `globals.css` and are used in components.
 
 tsc clean, `next build` compiled successfully.
+
+**Post-deploy verification (0671c27, prod):**
+- **Contrast, measured from rendered pixels** (canvas-resolved computed colors, alpha-composited over the page): tender detail 148 nodes / **0 failing**, verdict-box page 154 nodes / **0 failing**, calendar 175 nodes / **0 failing**. Worst ratio anywhere is now **5.34** (was 3.93). Calendar out-of-month day numbers went 2.30 → **5.35**.
+- **Inbox header** reads "15 tenders shown · 3 hidden as not relevant" against exactly 15 table rows — header and table now describe the same set.
+- **Map caption** reads "1 tender lists more than one region; each is pinned to the first" (tender 8254 publishes NL361 + NL362).
+- **Duplicate guard** verified read-only by running the guard's exact `ilike` name+authority query: the 8416/8417 values resolve to tender #8416 (a resubmit would now be refused), while a novel name+authority correctly returns nothing. Not tested by actually submitting the form — that writes to the client's production DB.
+- **NOT verified live:** the `recordFeedback` bidding→Q&A reconciliation and the `addMilestone` note preservation. Both require writing real feedback/milestones into production. Code-verified only.
+
+**Measurement lesson (three false alarms this session, all mine, none a real defect):** (1) `readyState === "complete"` does not mean streamed Suspense content has been swapped in — assert on the target element. (2) Chrome returns `getComputedStyle().color` as `oklch(...)`; parsing those numbers as RGB yields nonsense — resolve through a canvas. (3) A semi-transparent background (`bg-sunken/40`) painted on an empty canvas composites against nothing — fill white first, or every ratio is wrong. Each initially looked like a shipped bug.
