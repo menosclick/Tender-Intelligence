@@ -3,6 +3,7 @@ import { stageLabel } from "@/lib/format";
 import { PageHeader, microLabel, LabelChip } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList } from "@/lib/viz";
 import { PrintButton } from "./print-button";
+import { EmailExportButton, type ExportRow } from "./email-export";
 
 export const dynamic = "force-dynamic";
 
@@ -171,7 +172,7 @@ export default async function ReportsPage() {
     countTenders(admin, { manual: true }),
     countTenders(admin, { qualified: true, manual: true }),
     fetchQualified(admin),
-    admin.from("bid_pipeline").select("tender_id,stage"),
+    admin.from("bid_pipeline").select("tender_id,stage,notes"),
     admin.from("tender_feedback").select("tender_id,kind,value"),
     Promise.all(
       windows.map((w) =>
@@ -264,16 +265,58 @@ export default async function ReportsPage() {
       ];
     });
 
-  // Why tenders left the pipeline — the "why" a status count can't show.
+  // Why a tender left the pipeline — the "why" a status count can't show.
+  // Shared by the on-screen table and the email export.
+  function exitReason(c: { tender_id: number; stage: string }): string {
+    const fb = latestFeedback.get(c.tender_id);
+    if (fb?.relevance === "not_relevant") return "Marked not relevant (false positive)";
+    if (fb?.outcome === "no_bid") return "Decided not to bid";
+    if (fb?.outcome === "lost") return "Lost to competitor";
+    return stageLabel(c.stage);
+  }
+
   const exitRows = droppedOrLostCards.map((c) => {
     const t = byId.get(c.tender_id);
-    const fb = latestFeedback.get(c.tender_id);
-    let reason = stageLabel(c.stage);
-    if (fb?.relevance === "not_relevant") reason = "Marked not relevant (false positive)";
-    else if (fb?.outcome === "no_bid") reason = "Decided not to bid";
-    else if (fb?.outcome === "lost") reason = "Lost to competitor";
-    return [t?.naam ?? `Tender ${c.tender_id}`, <LabelChip key="l" label={t?.label ?? null} />, reason];
+    return [
+      t?.naam ?? `Tender ${c.tender_id}`,
+      <LabelChip key="l" label={t?.label ?? null} />,
+      exitReason(c),
+    ];
   });
+
+  // The emailed version of the two tables above. Built from the same sorted
+  // cards and the same exitReason(), so the mail and the page always agree.
+  // A hand-written note is the whole point of the report to management, so it
+  // wins over the generated reason when the card carries one.
+  const sortedCards = cards
+    .slice()
+    .sort((a, b) => STAGE_ORDER.indexOf(a.stage) - STAGE_ORDER.indexOf(b.stage));
+
+  const exportPipeline: ExportRow[] = sortedCards
+    .filter((c) => ACTIVE_STAGES.includes(c.stage))
+    .map((c) => {
+      const t = byId.get(c.tender_id);
+      return {
+        tender: t?.naam ?? `Tender ${c.tender_id}`,
+        label: t?.label ?? "",
+        score: t?.score != null ? String(t.score) : "",
+        stage: stageLabel(c.stage),
+        note: c.notes ?? "",
+      };
+    });
+
+  const exportExits: ExportRow[] = sortedCards
+    .filter((c) => DROPPED_OR_LOST.includes(c.stage))
+    .map((c) => {
+      const t = byId.get(c.tender_id);
+      return {
+        tender: t?.naam ?? `Tender ${c.tender_id}`,
+        label: t?.label ?? "",
+        score: t?.score != null ? String(t.score) : "",
+        stage: stageLabel(c.stage),
+        note: c.notes?.trim() ? c.notes : exitReason(c),
+      };
+    });
 
   // Domains (CPV) among qualified tenders — supporting context.
   const domCount = new Map<string, number>();
@@ -307,7 +350,22 @@ export default async function ReportsPage() {
       <PageHeader
         title="Reports"
         sub={`Tender intelligence overview · ${dateStr} · ${scannedCount} tenders scanned${manualCount > 0 ? ` (${manualCount} registered manually)` : ""}`}
-        actions={<PrintButton />}
+        actions={
+          <div className="flex gap-2">
+            <EmailExportButton
+              data={{
+                generatedOn: dateStr,
+                scanned: scannedCount,
+                qualified: qualifiedCount,
+                onBoard: cards.length,
+                active: activeCards.length,
+                pipeline: exportPipeline,
+                exits: exportExits,
+              }}
+            />
+            <PrintButton />
+          </div>
+        }
       />
 
       <dl className="flex flex-col divide-y divide-line overflow-hidden rounded-xl border border-line bg-surface md:flex-row md:divide-x md:divide-y-0">
