@@ -4,10 +4,11 @@ import { useState } from "react";
 import { btnPrimary } from "@/lib/ui";
 
 // One row of the report table, already reduced to plain strings by the server.
+// Deliberately carries no score or Hot/Warm label: those are the scoring
+// engine talking to itself, and management reads the opportunity and its
+// status, not the number that routed it. They stay on screen, not in the mail.
 export type ExportRow = {
   tender: string;
-  label: string;
-  score: string;
   stage: string;
   note: string;
 };
@@ -47,7 +48,6 @@ function table(caption: string, rows: ExportRow[], reasonHeader: string): string
       (r) =>
         `<tr>` +
         `<td style="${TD}">${cell(r.tender)}</td>` +
-        `<td style="${TD}">${cell(r.label)}${r.score ? ` (${cell(r.score)})` : ""}</td>` +
         `<td style="${TD}">${cell(r.stage)}</td>` +
         `<td style="${TD}">${cell(r.note)}</td>` +
         `</tr>`
@@ -59,8 +59,8 @@ function table(caption: string, rows: ExportRow[], reasonHeader: string): string
     // the table renders with doubled 2px borders.
     `<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;width:100%;` +
     `font-family:Calibri,Arial,sans-serif;color:#101828;">` +
-    `<tr><th style="${TH}">Opportunity</th><th style="${TH}">Score</th>` +
-    `<th style="${TH}">Status</th><th style="${TH}">${cell(reasonHeader)}</th></tr>` +
+    `<tr><th style="${TH}">Opportunity</th><th style="${TH}">Status</th>` +
+    `<th style="${TH}">${cell(reasonHeader)}</th></tr>` +
     body +
     `</table>`
   );
@@ -90,8 +90,7 @@ function buildText(d: ExportData): string {
     if (rows.length === 0) return;
     lines.push("", caption.toUpperCase());
     for (const r of rows) {
-      const score = r.score ? ` (${r.score})` : "";
-      lines.push(`- ${r.tender} | ${r.label}${score} | ${r.stage}${r.note ? ` | ${r.note}` : ""}`);
+      lines.push(`- ${r.tender} | ${r.stage}${r.note ? ` | ${r.note}` : ""}`);
     }
   };
   section("Currently being pursued", d.pipeline);

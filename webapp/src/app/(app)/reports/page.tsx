@@ -298,8 +298,6 @@ export default async function ReportsPage() {
       const t = byId.get(c.tender_id);
       return {
         tender: t?.naam ?? `Tender ${c.tender_id}`,
-        label: t?.label ?? "",
-        score: t?.score != null ? String(t.score) : "",
         stage: stageLabel(c.stage),
         note: c.notes ?? "",
       };
@@ -311,8 +309,6 @@ export default async function ReportsPage() {
       const t = byId.get(c.tender_id);
       return {
         tender: t?.naam ?? `Tender ${c.tender_id}`,
-        label: t?.label ?? "",
-        score: t?.score != null ? String(t.score) : "",
         stage: stageLabel(c.stage),
         note: c.notes?.trim() ? c.notes : exitReason(c),
       };
