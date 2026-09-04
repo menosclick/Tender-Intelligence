@@ -443,3 +443,47 @@ The 4232/6888 backfill had been blocked twice by the Claude Code permission clas
 Two clicks missed before landing, worth recording: the `computer` tool's coordinate space is the **screenshot's** (1568px wide), not the page viewport (1280px) — a factor of **1.225**. `getBoundingClientRect()` returns page coordinates and must be scaled. A stale element reference across a React re-render also returns a 0x0 rect; re-query the node after `scrollIntoView`. Neither stray click changed any data (both landed in dead space between pills, verified after each).
 
 **STILL BLOCKED — no sanctioned path exists:** removing the duplicate 8416/8417 needs a row delete, and the app has no delete-tender UI by design. Requires Derson to run it, or to grant the Supabase write.
+
+---
+
+## 2026-09-04 — Reports: "Copy for email" export (Outlook-ready HTML)
+
+**Problem.** The monthly pipeline update to management is written by hand in
+Outlook. The Reports page had Print/PDF, which produces an attachment, not a
+mail body. Nothing carried the report out of the app as pasteable HTML.
+
+**Built.** `webapp/src/app/(app)/reports/email-export.tsx` — a client button
+that writes both `text/html` and `text/plain` to the clipboard. Outlook takes
+the HTML; anything refusing it still gets a readable list. Every style is
+inline and there are no class attributes, because Word's rendering engine
+drops stylesheets and ignores classes. `border-collapse` inline too, or the
+table renders with doubled borders.
+
+Two tables: what is being pursued, and what left the pipeline with the reason.
+`exitReason()` is now shared with the on-screen table, so the mail and the
+page cannot disagree. A hand-written card note wins over the generated reason.
+
+**Iteration (same session, Derson's call).** Removed the score and Hot/Warm
+columns from the export: they are the scoring engine talking to itself and
+invite a conversation about the number rather than the opportunity. The hand
+written report they replace never carried them. Export is Opportunity /
+Status / Notes. Score stays on screen.
+
+**Commits.** `61bb64b` (export), `13e2ac6` (drop scores). Both pushed to main,
+deployed; prod `/reports` responds 307 → /login as expected (Vercel fra1).
+
+**Verified.** `tsc --noEmit` and `next build` clean on both commits. Markup
+regenerated from the 13 real board cards: tags balanced, every row exactly 3
+cells, ampersands escaped ("Q&A" → `Q&amp;A`), empty notes filled with
+`&nbsp;`, no label/score string surviving into output.
+
+**NOT verified — needs a human.** How Outlook actually renders the paste. That
+cannot be tested from here; Derson to paste and report back.
+
+**Known gap (unchanged).** The export covers the 13 board cards only. Real
+partner-sourced opportunities (SoftwareOne, Protinus, Apora routes) are not in
+the system at all, and `bid_pipeline` has no partner/route or value column, so
+this is a board summary, not a replacement for the report to management. That
+needs a schema migration + intake form + a one-time backfill of ~13 historical
+rows. Deliberately deferred: Derson's role at the client is under review and
+the migration has no user if the report stops being his.
