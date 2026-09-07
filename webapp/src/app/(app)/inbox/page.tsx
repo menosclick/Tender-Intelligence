@@ -207,16 +207,28 @@ export default async function InboxPage({
                     {t.buyer}
                   </span>
                   {/* If this buyer has appointed a single-source software
-                      broker, CBA cannot sell it direct — the broker is the
+                      broker, CBA cannot sell it direct: the broker is the
                       route in. That decides HOW to pursue the tender, so it
-                      belongs on the row where the pursue/hide call is made. */}
+                      belongs on the row where the pursue/hide call is made.
+                      The chip carries its own caveat rather than asserting
+                      more than the source supports, and says which contract
+                      matched, since a buyer can be reached through a joint
+                      body it belongs to (Gemert-Bakel via Bizob). */}
                   {(() => {
                     const broker = brokerFor(t.buyer);
                     if (!broker || broker.status !== "held") return null;
+                    const via =
+                      broker.buyer.toLowerCase() ===
+                      String(t.buyer ?? "").toLowerCase()
+                        ? broker.buyer
+                        : `${broker.buyer}, which it belongs to`;
                     return (
                       <span
                         className="mt-1 inline-block rounded bg-warm-soft px-1.5 py-0.5 text-xs font-medium text-warm"
-                        title={`${broker.buyer} has appointed ${broker.holder} as its software broker (${broker.term}). Licences route through them, not direct.`}
+                        title={
+                          `Software for this buyer routes through ${broker.holder} under the broker contract held by ${via}. ${broker.term}.` +
+                          (broker.unverified ? ` Caveat: ${broker.unverified}.` : "")
+                        }
                       >
                         via {broker.holder}
                       </span>

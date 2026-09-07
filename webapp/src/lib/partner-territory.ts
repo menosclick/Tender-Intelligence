@@ -281,17 +281,35 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     unverified: "value and term not published",
   },
   {
-    buyer: "Zuidoost Brabant",
-    bodyType: "14 decentral public bodies bundled for one tender",
+    // The buyer is Bizob, not "Zuidoost Brabant" — the region is where it
+    // operates, not the contracting party. Bizob is a procurement foundation
+    // (2003) serving 35+ public bodies; this contract covers the ten named
+    // below, ~5,500 workplaces. Verified 2026-09-07 against the award report.
+    buyer: "Bizob",
+    bodyType:
+      "procurement foundation for 35+ public bodies in Zuidoost-Brabant; this contract covers 10 of them",
     holder: "SoftwareOne",
+    covers: [
+      "Best",
+      "Deurne",
+      "Dienst Dommelvallei",
+      "GRS-A2",
+      "GR Peelgemeenten",
+      "Gemert-Bakel",
+      "Laarbeek",
+      "Veldhoven",
+      "Werkorganisatie CGM",
+      "Veiligheidsregio Brabant Zuidoost",
+    ],
     provinces: ["Noord-Brabant"],
     valueEur: null,
     valueBasis: "total",
-    term: "14 decentral government bodies, awarded 2022",
-    endsBy: null,
+    term: "2 years + 2×1-year extensions, awarded 2022; ~5,500 workplaces (renewal)",
+    endsBy: 2026,
     status: "held",
     source: "https://www.softwareone.com/nl-nl/nieuwsberichten/2022/02/11/softwareone-wint-aanbesteding-zuidoost-brabant",
-    unverified: "awarded 2022 and likely re-tendered by now; treat as stale",
+    unverified:
+      "awarded 2022 on a 2+1+1 term, so it expires around 2026 and may already have been re-tendered; membership beyond these ten is not covered by this contract",
   },
   {
     buyer: "Stichtse Vecht",
@@ -307,17 +325,25 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "Noaberkracht",
-    bodyType: "merged operating organisation for 2 municipalities",
+    // Not a municipal merger: Dinkelland and Tubbergen stay separate
+    // municipalities and share one staff organisation. A bedrijfsvoerings-
+    // organisatie since 2015 (was a gemeenschappelijke regeling from 2013).
+    bodyType:
+      "single shared staff organisation (bedrijfsvoeringsorganisatie) for 2 municipalities that remain separate",
     holder: "Protinus IT",
     covers: ["Dinkelland", "Tubbergen"],
     provinces: ["Overijssel"],
     valueEur: null,
     valueBasis: "total",
-    term: '"Softwaremakelaar" for seven Twente municipalities, listed 2020',
+    term: '"Softwaremakelaar zeven Twentse gemeenten", listed 2020',
     endsBy: null,
     status: "held",
     source: "https://nl.openprocurements.com/supplier/protinus-it/",
-    unverified: "listed 2020; may have lapsed or been re-tendered, so treat as stale",
+    // The listing says SEVEN Twente municipalities but only names Noaberkracht,
+    // whose two members are known. The other five were never identified, so
+    // `covers` undercounts this row and the reach figure with it.
+    unverified:
+      "the contract covers seven Twente municipalities but only Noaberkracht's two are identified, so the reach shown here is a floor; listed 2020 and may have lapsed or been re-tendered",
   },
 
   // ---- Open: nobody holds these yet. This is where CBA can still move. -----

@@ -849,3 +849,52 @@ where it came from.
 **Verified by rendering:** heading and gloss present, old label gone, every
 member municipality of every joint body appearing in the markup, still zero
 em-dashes in output.
+
+---
+
+## 2026-09-07 (8) — Verified the two unchecked joint bodies. Both rows were wrong.
+
+Derson asked for point 1 of the follow-up list: check Zuidoost Brabant and
+Noaberkracht against their own sources rather than trade-press summaries, the
+way SSC Ons had been. Both rows changed.
+
+**1. "Zuidoost Brabant" was not the buyer. Bizob is.** The region is where it
+operates, not the contracting party. Bizob is a procurement foundation
+(established 2003) serving 35+ public bodies, and it ran this tender on behalf
+of ten of them, covering ~5,500 workplaces. The ten are now named:
+
+> Best, Deurne, Dienst Dommelvallei, GRS-A2, GR Peelgemeenten, Gemert-Bakel,
+> Laarbeek, Veldhoven, Werkorganisatie CGM, Veiligheidsregio Brabant Zuidoost.
+
+The term is a 2+1+1, so it expires around 2026 and may already be re-tendered.
+`endsBy: 2026` and the caveat say so. Membership of Bizob beyond these ten is
+NOT covered by this contract, which the row now states explicitly.
+
+**This produced a real finding.** Open tender **#7130 (Gemeente Gemert-Bakel en
+gemeente Laarbeek, Hot, 37 days out, still untriaged)** matches Bizob through
+both named members, so its software routes through SoftwareOne. **The DB's own
+`route_to_market` says "Direct CBA".** They disagree. The award report naming
+both municipalities alongside SoftwareOne is the stronger evidence — the AI
+scored that field with no knowledge of the contract — but this is flagged, not
+silently resolved. Worth Derson's judgement before anyone acts on it.
+
+**2. Noaberkracht was described wrong, and undercounts.** It is not a municipal
+merger: Dinkelland and Tubbergen remain separate municipalities sharing one
+staff organisation (a bedrijfsvoeringsorganisatie since 2015, a
+gemeenschappelijke regeling before that). More importantly the listing reads
+"Softwaremakelaar **zeven** Twentse gemeenten" while `covers` names only
+Noaberkracht's two. The other five were never identified, so this row's reach
+is a floor, not a count. The caveat now says exactly that instead of implying
+precision.
+
+**Also tightened the inbox chip.** It asserted "X has appointed Y as its
+software broker" flatly. It now says software "routes through" the holder,
+names which contract matched (a buyer can be reached through a joint body it
+belongs to, e.g. Gemert-Bakel via Bizob), and appends the row's own caveat.
+
+**Reach after corrections:** Protinus 31 buyers, SoftwareOne 14 (was 4 —
+Bizob's ten were missing entirely).
+
+**Verified:** `tsc` + `next build` clean; all ten Bizob members render in the
+markup; `brokerFor` resolves Gemert-Bakel, Best, Dinkelland and Tubbergen
+through their joint bodies; still zero em-dashes in rendered output.
