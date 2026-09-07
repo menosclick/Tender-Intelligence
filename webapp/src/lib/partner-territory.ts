@@ -19,10 +19,16 @@
 // case-insensitive substring, so "Rotterdam" catches "Gemeente Rotterdam"),
 // the holder, and a source URL. Leave a field null rather than guessing.
 //
-// A NOTE ON COLLECTIVES. Several of the largest contracts are held by purchasing
-// collectives covering many municipalities at once (SSC Ons, Drechtsteden,
-// Inkoopkracht ZHW). `covers` lists the member buyers so a tender from any one
-// of them is matched — this is where most of the brokered territory actually is.
+// A NOTE ON JOINT BODIES. Several of the largest contracts are not held by a
+// single town but by a gemeenschappelijke regeling — the Dutch statutory form
+// for public bodies co-operating — which tenders once on behalf of all its
+// members. `covers` lists those members so a tender from any one of them is
+// matched. This is where most of the brokered territory actually is.
+//
+// They are NOT interchangeable, which is why each carries its own `bodyType`:
+// SSC Ons is a staffed shared-service centre that runs its members' IT,
+// Drechtsteden a formal regional arrangement, Inkoopkracht ZHW a purchasing
+// network, Zuidoost Brabant bodies bundled for a single tender.
 
 /** The partners seen holding broker seats. Order fixes their colour. */
 export const BROKER_HOLDERS = [
@@ -70,8 +76,17 @@ export type BrokerContract = {
   /** Buyer or collective name as published. Substring-matched, case-insensitive. */
   buyer: string;
   holder: BrokerHolder;
-  /** Member buyers, for collectives. Each is matched like `buyer`. */
+  /** Member buyers, for joint bodies. Each is matched like `buyer`. */
   covers?: string[];
+  /**
+   * What kind of joint body this is. They are all gemeenschappelijke
+   * regelingen (the Dutch statutory form for public bodies co-operating), but
+   * they are not the same animal: SSC Ons is a staffed shared-service centre
+   * running its members' IT, Drechtsteden a formal regional arrangement,
+   * Inkoopkracht a purchasing network, Zuidoost Brabant bodies bundled for one
+   * tender. Shown on hover so the panel does not flatten them into one label.
+   */
+  bodyType?: string;
   /** Provinces to tint. A collective can span several. */
   provinces: string[];
   /** Maximum estimated value as published, in euros. Null when not disclosed. */
@@ -95,6 +110,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   // ---- Held: the large collectives, where most of the territory sits --------
   {
     buyer: "Inkoopkracht Zuid-Holland West",
+    bodyType: "purchasing network of 6 municipalities",
     holder: "Protinus IT",
     covers: [
       "Delft",
@@ -114,6 +130,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "Drechtsteden",
+    bodyType: "regional joint arrangement (gemeenschappelijke regeling) of 7 municipalities",
     holder: "Protinus IT",
     covers: [
       "Alblasserdam",
@@ -136,8 +153,19 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "SSC Ons",
+    bodyType: "staffed shared-service centre running IT for 6 municipalities and a province",
     holder: "Protinus IT",
-    covers: ["Dalfsen", "Westerveld", "Zwartewaterland", "Kampen", "Zwolle", "Overijssel"],
+    // Seven members, not six: Ommen was missing from the press summary and
+    // comes from SSC Ons's own account of itself.
+    covers: [
+      "Zwolle",
+      "Kampen",
+      "Dalfsen",
+      "Westerveld",
+      "Zwartewaterland",
+      "Ommen",
+      "Overijssel",
+    ],
     provinces: ["Overijssel", "Drenthe"],
     valueEur: 6_000_000,
     valueBasis: "per year",
@@ -254,6 +282,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "Zuidoost Brabant",
+    bodyType: "14 decentral public bodies bundled for one tender",
     holder: "SoftwareOne",
     provinces: ["Noord-Brabant"],
     valueEur: null,
@@ -278,6 +307,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "Noaberkracht",
+    bodyType: "merged operating organisation for 2 municipalities",
     holder: "Protinus IT",
     covers: ["Dinkelland", "Tubbergen"],
     provinces: ["Overijssel"],
@@ -332,6 +362,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   },
   {
     buyer: "ISNV Noord Veluwe",
+    bodyType: "shared procurement organisation for 2 municipalities",
     holder: "not yet awarded",
     covers: ["Putten", "Bunschoten"],
     provinces: ["Gelderland"],

@@ -812,3 +812,40 @@ number that matters when the question is who covers the territory.
 provinces striped and referencing their pattern, both group headings present,
 every collective's member list appearing in the markup, and the legend showing
 30/4.
+
+---
+
+## 2026-09-07 (7) — "Buying groups" was a label I made up. Replaced with the real one.
+
+Derson: "buying groups que son exactamente? y eso de one contract many
+municipalities... no me convence."
+
+**He was right, and the data proves it.** The five rows I had flattened under
+one invented English heading are not the same kind of organisation:
+
+| Body | What it actually is |
+|---|---|
+| SSC Ons | staffed shared-service centre, 120+ employees, runs its members' IT |
+| Drechtsteden | formal regional joint arrangement of 7 municipalities |
+| Inkoopkracht ZHW | purchasing network of 6 municipalities |
+| Zuidoost Brabant | 14 public bodies bundled for a single tender |
+| Noaberkracht | merged operating organisation for 2 municipalities |
+
+The subtitle was wrong too: "many municipalities" understates SSC Ons, which
+includes the **province of Overijssel**, not only municipalities.
+
+**Fixed.** The heading is now **"Gemeenschappelijke regelingen"** — the Dutch
+statutory term for public bodies co-operating, which is what CBA will see named
+on the tender itself — glossed as "joint bodies buying for their members" so it
+stays readable. Each row carries a new `bodyType` naming what it specifically
+is, shown on hover, so the panel no longer flattens four different legal forms
+into one word. Derson chose the Dutch term over an English paraphrase.
+
+**A data error found while verifying.** SSC Ons covers **seven** members, not
+six: Ommen was absent from the trade-press summary I built the row from and
+appears in SSC Ons's own description of itself. Added, with a comment saying
+where it came from.
+
+**Verified by rendering:** heading and gloss present, old label gone, every
+member municipality of every joint body appearing in the markup, still zero
+em-dashes in output.

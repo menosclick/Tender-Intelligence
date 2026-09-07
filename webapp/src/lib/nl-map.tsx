@@ -86,9 +86,10 @@ export function NetherlandsMap() {
   const brokered = holdersByProvince();
   const held = BROKER_CONTRACTS.filter((c) => c.status === "held");
   const openWindows = BROKER_CONTRACTS.filter((c) => c.status === "open");
-  // Collectives first: one contract covering seven municipalities is a bigger
-  // fact than a single town, and mixing the two made the list read as noise.
-  const collectives = held.filter((c) => c.covers?.length);
+  // Joint bodies first: one contract covering seven municipalities is a
+  // bigger fact than a single town, and mixing the two made the list read
+  // as noise (Derson, 2026-09-07).
+  const jointBodies = held.filter((c) => c.covers?.length);
   const singles = held.filter((c) => !c.covers?.length);
   // Holders actually present in the data, in BROKER_HOLDERS order, so the
   // legend never advertises a colour the map does not use.
@@ -96,7 +97,7 @@ export function NetherlandsMap() {
     held.some((c) => c.holder === h)
   );
   // Buyers reached, members included. "10 contracts" undersells Protinus when
-  // three of them are buying groups.
+  // three of them are joint bodies buying for their whole membership.
   const reachOf = (h: string) =>
     held.filter((c) => c.holder === h).reduce((n, c) => n + buyerCount(c), 0);
 
@@ -190,10 +191,13 @@ export function NetherlandsMap() {
         </li>
       </ul>
 
+      {/* The Dutch statutory term, not an invented English category: these
+          bodies are what CBA will see named on the tender itself. The gloss
+          carries the meaning for anyone who does not know the word. */}
       <ContractGroup
-        heading="Buying groups"
-        note="one contract, many municipalities"
-        rows={collectives}
+        heading="Gemeenschappelijke regelingen"
+        note="joint bodies buying for their members"
+        rows={jointBodies}
       />
       <ContractGroup heading="Single buyers" rows={singles} />
 
@@ -208,9 +212,9 @@ export function NetherlandsMap() {
                 key={c.buyer}
                 className="flex items-baseline justify-between gap-3 text-xs"
                 title={
-                  c.covers
-                    ? `${c.buyer} buys for ${c.covers.join(", ")}. ${c.term}.`
-                    : `${c.buyer}. ${c.term}.`
+                  (c.bodyType ? `${c.buyer} is a ${c.bodyType}. ` : `${c.buyer}. `) +
+                  (c.covers ? `It buys for ${c.covers.join(", ")}. ` : "") +
+                  `${c.term}.`
                 }
               >
                 <span className="min-w-0 truncate">
@@ -269,9 +273,10 @@ function ContractGroup({
               key={c.buyer}
               className="flex items-baseline justify-between gap-3 text-xs"
               title={
+                (c.bodyType ? `${c.buyer} is a ${c.bodyType}. ` : `${c.buyer}. `) +
                 (c.covers
-                  ? `${c.buyer} buys for ${buyerCount(c)} bodies: ${c.covers.join(", ")}. `
-                  : `${c.buyer}. `) +
+                  ? `It buys for ${buyerCount(c)} bodies: ${c.covers.join(", ")}. `
+                  : "") +
                 `Broker: ${c.holder}. ${c.term}.` +
                 (c.unverified ? ` Caveat: ${c.unverified}.` : "")
               }
