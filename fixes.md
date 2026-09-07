@@ -633,3 +633,73 @@ the next session should not re-open this on the same false premise.
 **Verified:** `tsc --noEmit` clean, `next build` clean. Inbox rendered against
 live Supabase — 16 rows (8416 now gone), every row carrying its buyer beneath
 the title, the four Identity tenders visibly distinct.
+
+---
+
+## 2026-09-07 (4) — The NL map becomes a partner-territory map
+
+**Derson:** "what about the netherlands opportunity map? it shows 5 but I don't
+see any relevance there... the idea of my map was to understand where my
+resellers operate as single source provider."
+
+**First, why the map read as useless.** It pinned 5 of 16 open tenders. The
+other 10 publish NUTS code "NL" (national scope) and pin nowhere, so the map
+silently dropped 63% of the pipeline. Five pins across four provinces is not a
+pattern. My initial read was that geography simply does not drive CBA's
+decisions and the panel should be replaced — Derson corrected that, and the
+correction is the whole point: the map was never meant to plot CBA's tenders.
+It was meant to plot **where each reseller partner is the single-source
+software broker**, because that decides the route to market.
+
+**The research (full note + citations: `02_CLIENTS/cba-benelux/research/2026-09-07-partner-territory.md`).**
+When a Dutch public body appoints a software broker, every licence it buys
+routes through that broker — CBA cannot sell direct. Verified contracts:
+
+| Buyer | Holder | Value | Term |
+|---|---|---|---|
+| Rotterdam | Protinus IT | €160M | 2+2 yrs, renewal of a 2020 win (was €100M) |
+| Den Haag | SoftwareOne | not published | 4+2 yrs, awarded Jan 2024 |
+| Zoetermeer | Protinus IT | €40M | 4 yrs, running since Feb 2026 |
+| Dronten | Protinus IT | €20M | 2 yrs + 2×24 months |
+| De Fryske Marren | Protinus IT | €1.6M | 4 yrs, from 1 Jan 2026 |
+| Stichtse Vecht / Noaberkracht | Protinus IT | not published | 2021 / 2020 — stale, flagged |
+| **Leeuwarden** | **not yet awarded** | — | European procedure announced 18 Nov 2025 |
+
+**The key finding is that this is a channel, not a competitor.** Protinus is
+vendor-agnostic "Managed Sourcing" and openly routes specialist resellers into
+its large accounts. A brokered buyer is a door, not a wall — the question stops
+being "we lost Rotterdam" and becomes "who do we call to get into Rotterdam".
+
+**The system already knew.** Open tender #7409 (Integrale IT/OT-SOC, Gemeente
+Rotterdam, Hot, 14 days out, still untriaged) was already scored
+`route_to_market = "Via ProtinusIT"` by the AI, with no knowledge of the €160M
+contract. The intelligence existed in the DB; nothing surfaced it where
+decisions get made.
+
+**Built.**
+- `src/lib/partner-territory.ts` — hand-curated contracts, one `source` URL per
+  row and an explicit `unverified` field. Nothing scraped, nothing guessed;
+  where a value was not published it is `null`, not estimated. Two 2020/2021
+  rows are marked stale rather than presented as current.
+- Map gains a diagonal hatch over provinces where a partner holds the broker
+  position. Hatch rather than a second fill, because the fill already encodes
+  open tenders and the two facts are independent. Tooltips name the holder,
+  value and end year.
+- A "Partner territory" list under the map, plus a green callout for contracts
+  with no broker appointed yet — today that is Leeuwarden, the one territory
+  still winnable.
+- Inbox rows carry a `via <holder>` chip when the buyer is brokered, so the
+  route is visible at the moment the pursue/hide call is made.
+
+**Verified against live Supabase, not just a build.** `tsc` and `next build`
+clean. Map server-rendered with production data: hatch pattern emitted,
+**5 provinces hatched**, all seven held contracts listed with their values,
+the Leeuwarden open-window callout present. Inbox badge check returns exactly
+one row — #7409 Rotterdam → "via Protinus IT" — matching the DB's own
+route_to_market.
+
+**Honest limits, recorded in the research note:** Het Hogeland and Apeldoorn
+are known to have brokers but the holders were not established; Den Haag's
+value is unpublished; coverage is trade-press-based and deliberately partial.
+A buyer absent from the file means "no contract on file", never "buys direct" —
+the UI says so explicitly.

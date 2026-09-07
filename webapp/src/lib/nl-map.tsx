@@ -1,5 +1,10 @@
 import Link from "next/link";
 import { NL_PROVINCES, NL_MAP_VIEWBOX } from "./nl-provinces";
+import {
+  BROKER_CONTRACTS,
+  holdersByProvince,
+  formatValue,
+} from "./partner-territory";
 
 // Netherlands opportunity map — real province geometry (CBS/Kadaster
 // generalized borders baked into nl-provinces.ts as static SVG paths; no
@@ -80,6 +85,8 @@ export function NetherlandsMap({
 }) {
   const byProvince = new Map(provinces.map((p) => [p.province, p.tenders]));
   const regional = provinces.reduce((n, p) => n + p.tenders.length, 0);
+  const brokered = holdersByProvince();
+  const openWindows = BROKER_CONTRACTS.filter((c) => c.status === "open");
 
   if (regional === 0 && nationalCount === 0 && otherRegions.length === 0) {
     return (
@@ -96,15 +103,49 @@ export function NetherlandsMap({
         viewBox={NL_MAP_VIEWBOX}
         className="mx-auto block w-full max-w-80"
         role="img"
-        aria-label={`Map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region`}
+        aria-label={`Map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region, and ${brokered.size} province${brokered.size === 1 ? "" : "s"} where a partner holds a software-broker contract`}
       >
+        {/* Diagonal hatch marks provinces where a partner holds the broker
+            position. Hatch, not a second fill: the fill already encodes open
+            tenders, and the two facts are independent — a province can have
+            both, either, or neither. */}
+        <defs>
+          <pattern
+            id="broker-hatch"
+            width="7"
+            height="7"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <line
+              x1="0"
+              y1="0"
+              x2="0"
+              y2="7"
+              stroke="var(--color-warm)"
+              strokeWidth="1.6"
+              opacity="0.55"
+            />
+          </pattern>
+        </defs>
         {NL_PROVINCES.map((p) => {
           const tenders = byProvince.get(p.name) ?? [];
           const has = tenders.length > 0;
+          const contracts = brokered.get(p.name) ?? [];
+          const brokerNote = contracts.length
+            ? ` ⟶ BROKER TERRITORY: ${contracts
+                .map(
+                  (c) =>
+                    `${c.buyer} held by ${c.holder} (${formatValue(c.valueEur)}${
+                      c.endsBy ? `, to ${c.endsBy}` : ""
+                    })`
+                )
+                .join("; ")}`
+            : "";
           return (
             <g key={p.name}>
               <title>
-                {has
+                {(has
                   ? `${p.name} — ${tenders
                       .map(
                         (m) =>
@@ -113,7 +154,7 @@ export function NetherlandsMap({
                           } · NUTS: ${m.nutsName}`
                       )
                       .join(" | ")}`
-                  : p.name}
+                  : p.name) + brokerNote}
               </title>
               <path
                 d={p.d}
@@ -122,6 +163,16 @@ export function NetherlandsMap({
                 strokeWidth="1.5"
                 strokeLinejoin="round"
               />
+              {contracts.length > 0 && (
+                <path
+                  d={p.d}
+                  fill="url(#broker-hatch)"
+                  stroke="var(--color-warm)"
+                  strokeWidth="1.5"
+                  strokeLinejoin="round"
+                  pointerEvents="none"
+                />
+              )}
               {has && (
                 <>
                   <circle
@@ -189,6 +240,58 @@ export function NetherlandsMap({
         {multiRegionCount > 0 &&
           ` ${multiRegionCount} tender${multiRegionCount === 1 ? " lists" : "s list"} more than one region; each is pinned to the first.`}
       </p>
+
+      {/* Partner territory. This is the reason the map earns its space: where a
+          buyer has appointed a single-source software broker, CBA cannot sell
+          direct — the broker IS the route to market. Protinus is vendor-neutral
+          and routes specialist resellers into its accounts, so a held territory
+          is a door, not a wall. */}
+      <div className="mt-4 border-t border-line pt-3">
+        <div className="flex items-baseline justify-between gap-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-mid">
+            Partner territory
+          </h3>
+          <span className="flex items-center gap-1.5 text-xs text-fg-soft">
+            <span
+              className="h-2.5 w-2.5 rounded-sm ring-1 ring-inset ring-warm/50"
+              style={{ backgroundColor: "var(--color-warm-soft)" }}
+            />
+            broker held
+          </span>
+        </div>
+        <ul className="mt-2 space-y-1.5">
+          {BROKER_CONTRACTS.filter((c) => c.status === "held").map((c) => (
+            <li key={c.buyer} className="flex items-baseline justify-between gap-3 text-xs">
+              <span className="min-w-0 truncate">
+                <span className="font-medium text-fg">{c.buyer}</span>{" "}
+                <span className="text-fg-mid">· {c.holder}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-fg-soft">
+                {formatValue(c.valueEur)}
+                {c.endsBy ? ` · to ${c.endsBy}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+        {openWindows.length > 0 && (
+          <div className="mt-3 rounded-lg bg-ok-soft px-2.5 py-2">
+            <p className="text-xs font-semibold text-ok">
+              Open — no broker appointed yet
+            </p>
+            {openWindows.map((c) => (
+              <p key={c.buyer} className="mt-0.5 text-xs text-fg-mid">
+                <span className="font-medium text-fg">{c.buyer}</span> — {c.term}.
+                {c.unverified ? ` ${c.unverified}.` : ""}
+              </p>
+            ))}
+          </div>
+        )}
+        <p className="mt-2 text-xs leading-relaxed text-fg-soft">
+          Hand-curated from public award notices, not scraped — a buyer missing
+          here means no contract is on file, not that it buys direct. Sources and
+          what is still unverified: see the partner-territory research note.
+        </p>
+      </div>
     </div>
   );
 }

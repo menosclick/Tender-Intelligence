@@ -5,6 +5,7 @@ import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard, recordFeedback } from "@/lib/actions";
 import { InboxFilters } from "./filters";
+import { brokerFor } from "@/lib/partner-territory";
 
 export const dynamic = "force-dynamic";
 
@@ -205,6 +206,22 @@ export default async function InboxPage({
                   <span className="mt-0.5 block truncate text-xs text-fg-soft">
                     {t.buyer}
                   </span>
+                  {/* If this buyer has appointed a single-source software
+                      broker, CBA cannot sell it direct — the broker is the
+                      route in. That decides HOW to pursue the tender, so it
+                      belongs on the row where the pursue/hide call is made. */}
+                  {(() => {
+                    const broker = brokerFor(t.buyer);
+                    if (!broker || broker.status !== "held") return null;
+                    return (
+                      <span
+                        className="mt-1 inline-block rounded bg-warm-soft px-1.5 py-0.5 text-xs font-medium text-warm"
+                        title={`${broker.buyer} has appointed ${broker.holder} as its software broker (${broker.term}). Licences route through them, not direct.`}
+                      >
+                        via {broker.holder}
+                      </span>
+                    );
+                  })()}
                 </td>
                 <td className="px-4 py-3 text-fg-mid">{domainOf(t)}</td>
                 <td className="px-4 py-3">
