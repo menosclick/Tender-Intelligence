@@ -594,3 +594,42 @@ duplicates remaining; the four Identity tenders all still there.
 
 **Not a code change** — no deploy needed. This closes the item that had been
 open and blocked since 2026-08-24.
+
+---
+
+## 2026-09-07 (3) — Inbox: buyer moved under the title; dashboard KPI checked and left alone
+
+Two follow-ups from the duplicate hunt. One was a real fix, one turned out to
+be a false alarm and is recorded as such.
+
+**1. Inbox — the buyer now sits under the title.** Four Identity/Access
+tenders (Radboud 5784, Zaanstad 6172, DUO 6169, Van Hall 10063) open with
+near-identical Dutch titles. The buyer already had its own column, but at
+12rem away the eye compares titles, reaches "duplicate", and never travels to
+the column that disproves it. The buyer is what distinguishes these rows, so
+it now renders directly beneath the title in `fg-soft`.
+
+The standalone Buyer column was then removed rather than showing the same
+string twice per row. Safe to remove: the inbox filter keys on `buyer_type`
+(the category), never on the buyer name, and free-text search already covers
+`title,buyer`. Table `min-w` 52rem → 44rem and the empty-state `colSpan`
+7 → 6 to match.
+
+**2. Dashboard "Deadlines ≤ 30d" — checked, NOT changed. My first reading was
+wrong and the correction matters.** An initial diagnostic said the KPI showed
+13 from 10 tenders with 6172 and 8254 double-counted, and I suspected
+`t.deadline` was a full timestamp while `e.date` was `YYYY-MM-DD`, so the
+dedupe keys could never collide. Verified against the DB instead of trusting
+it: `v_app_tenders.deadline` is already a plain `YYYY-MM-DD` date, the keys DO
+collide, and the Set dedupes correctly. **The 13 was a bug in my throwaway
+script** (it keyed on days-remaining, not the date), not in the app.
+
+Re-run with the shipped logic imported directly: the KPI is **11 dates across
+10 tenders** — 9315 legitimately contributes two (question deadline + NvI).
+The subtitle already reads "official dates & milestones", so counting dates
+rather than tenders is what it advertises. No change made. Recorded because
+the next session should not re-open this on the same false premise.
+
+**Verified:** `tsc --noEmit` clean, `next build` clean. Inbox rendered against
+live Supabase — 16 rows (8416 now gone), every row carrying its buyer beneath
+the title, the four Identity tenders visibly distinct.

@@ -161,11 +161,10 @@ export default async function InboxPage({
           positioned ancestor its static position inside the wide table row
           becomes phantom document scroll area on mobile. */}
       <div className="relative mt-5 overflow-x-auto rounded-xl border border-line bg-surface">
-        <table className="w-full min-w-[52rem] text-sm">
+        <table className="w-full min-w-[44rem] text-sm">
           <thead>
             <tr className={`border-b border-line text-left ${microLabel}`}>
               <th className="px-4 py-2.5">Tender</th>
-              <th className="px-4 py-2.5">Buyer</th>
               <th className="px-4 py-2.5">Domain</th>
               <th className="px-4 py-2.5">Label · score</th>
               <th className="px-4 py-2.5">Deadline</th>
@@ -196,9 +195,16 @@ export default async function InboxPage({
                       </span>
                     )}
                   </div>
-                </td>
-                <td className="max-w-[12rem] truncate px-4 py-3 text-fg-mid" title={t.buyer ?? ""}>
-                  {t.buyer}
+                  {/* The buyer repeats here, under the title, even though it
+                      has its own column: four separate Identity/Access tenders
+                      (Radboud, Zaanstad, DUO, Van Hall) open with near-identical
+                      Dutch titles, and at a column's distance the eye compares
+                      titles and calls them duplicates (Derson, 2026-09-07).
+                      The buyer is what tells them apart, so it belongs next to
+                      the thing it disambiguates. */}
+                  <span className="mt-0.5 block truncate text-xs text-fg-soft">
+                    {t.buyer}
+                  </span>
                 </td>
                 <td className="px-4 py-3 text-fg-mid">{domainOf(t)}</td>
                 <td className="px-4 py-3">
@@ -236,7 +242,7 @@ export default async function InboxPage({
             ))}
             {rows.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-sm text-fg-soft">
+                <td colSpan={6} className="px-4 py-12 text-center text-sm text-fg-soft">
                   {filtersActive
                     ? "No open tenders match these filters."
                     : "No open Warm+ tenders right now. The scraper runs daily at 09:00."}
