@@ -703,3 +703,69 @@ are known to have brokers but the holders were not established; Den Haag's
 value is unpublished; coverage is trade-press-based and deliberately partial.
 A buyer absent from the file means "no contract on file", never "buys direct" —
 the UI says so explicitly.
+
+---
+
+## 2026-09-07 (5) — Full broker-territory research; map recoloured by partner; dead cards out of Latest qualified
+
+Three requests from Derson, all shipped together.
+
+**1. Research widened from 7 contracts to 19.** The first pass found single
+buyers. The real territory turned out to sit in *purchasing collectives*, which
+is what made the map worth building:
+
+| Contract | Holder | Covers | Value |
+|---|---|---|---|
+| Inkoopkracht Zuid-Holland West | Protinus | 6 municipalities incl. Delft, Westland | €53M |
+| Drechtsteden | Protinus (co-winner) | 7 municipalities incl. Dordrecht | not published |
+| SSC Ons | Protinus, explicitly "Single Source" | 5 municipalities + provincie Overijssel | €6M/yr |
+| Rotterdam | Protinus | 1 | €160M |
+| Zoetermeer | Protinus | 1 | €40M |
+| Dronten | Protinus | 1 | €20M |
+| Den Haag | SoftwareOne | 1 | not published |
+| Provincie Drenthe | SoftwareOne | ~1000 workplaces | not published |
+| Westerkwartier | SoftwareOne | 1 | not published |
+| Zuidoost Brabant | SoftwareOne | 14 bodies | not published |
+
+**34 buyers covered across 8 of 12 provinces.** Protinus dominates; SoftwareOne
+holds the north (Drenthe, Groningen) plus Den Haag and Zuidoost Brabant.
+
+**Five territories are OPEN — nobody holds them yet.** Provincie Utrecht and
+Nieuwegein close 2026-09-25, De Wolden Hoogeveen 2026-10-05, ISNV Noord Veluwe
+2026-10-28, Leeuwarden undated. These are the entry windows.
+
+**2. The map is now coloured by partner, and the tender counts are gone.**
+Derson: "quita del mapa las oportunidades clasificadas, esos números no hacen
+sentido." They didn't: only 5 of 16 open tenders carry a province, so the
+badges implied a geographic pattern drawn from a third of the data. The map
+takes no tender data at all now — it renders `partner-territory.ts`, one fill
+colour per holder, legend naming each partner beside its swatch (never colour
+alone, per DESIGN.md). Where a province is split between two brokers
+(Zuid-Holland: Protinus in Rotterdam, SoftwareOne in Den Haag) it fills with
+the first and names both in the tooltip rather than pretending one owns it.
+
+The dashboard's NUTS bucketing (~1.4KB of per-request work) was deleted with
+it. `parseNutsCodes`/`NUTS2_PROVINCE` stay exported — still used elsewhere.
+
+**3. Latest qualified no longer shows dead cards.** It filtered on label only,
+so Dropped tenders surfaced: #8606 and #8417 were both in the visible five.
+Now filtered on two independent signals, because either can exist without the
+other — a terminal board stage (Dropped/Lost/Won) AND a recorded `no_bid`/`lost`
+outcome. #9117 proves the second is needed: it carries `no_bid` with no board
+card at all. The dashboard now fetches all feedback kinds rather than only
+`relevance`. **Scoped to this panel deliberately** — the KPIs above still count
+the full open set.
+
+**Verified against live Supabase.** `tsc` + `next build` clean. Map rendered:
+zero count badges, 8 provinces coloured, both holders named in the legend, 4
+open windows with their closing dates. Latest qualified top five is now
+Identified/Analysis/Q&A/untriaged only — zero Dropped, checked by assertion.
+Inbox route badge still resolves #7409 Rotterdam → "via Protinus IT".
+
+**Honest limits (also in the research note):** Het Hogeland and Apeldoorn have
+brokers whose holders were never established. Four rows are 2020–2022 awards
+flagged `unverified` as possibly re-tendered — shown, but labelled stale in the
+source file rather than presented as current fact. Drechtsteden was a
+co-winner award, so a second broker holds part of it. Coverage is trade-press
+based and not exhaustive: a buyer absent from the file means "no contract on
+file", never "buys direct", and the UI says exactly that.

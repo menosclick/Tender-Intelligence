@@ -8,54 +8,166 @@
 // Sourcing" and openly routes specialist resellers into its large accounts, so
 // a brokered buyer is a channel to enter, not an account that is lost.
 //
-// HOW IT IS MAINTAINED. Hand-curated from public sources, one entry per
-// contract, each carrying its own `source` URL. Nothing here is scraped or
-// inferred — if a fact could not be verified it is left null and `verified`
-// says what is still unknown. Research write-up and full citations:
+// HOW IT IS MAINTAINED. Hand-curated from public award notices and Dutch
+// channel press, one entry per contract, each carrying its own `source` URL.
+// Nothing here is scraped or inferred — where a value was not published the
+// field is null rather than estimated, and `unverified` states what is still
+// unknown about the row. Research write-up and full citations:
 // 02_CLIENTS/cba-benelux/research/2026-09-07-partner-territory.md
 //
-// TO ADD A ROW: paste the buyer exactly as TenderNed publishes it (the matcher
-// is case-insensitive substring, so "Rotterdam" catches "Gemeente Rotterdam"),
+// TO ADD A ROW: paste the buyer as TenderNed publishes it (matching is
+// case-insensitive substring, so "Rotterdam" catches "Gemeente Rotterdam"),
 // the holder, and a source URL. Leave a field null rather than guessing.
+//
+// A NOTE ON COLLECTIVES. Several of the largest contracts are held by purchasing
+// collectives covering many municipalities at once (SSC Ons, Drechtsteden,
+// Inkoopkracht ZHW). `covers` lists the member buyers so a tender from any one
+// of them is matched — this is where most of the brokered territory actually is.
+
+/** The partners seen holding broker seats. Order fixes their colour. */
+export const BROKER_HOLDERS = [
+  "Protinus IT",
+  "SoftwareOne",
+  "Centralpoint",
+  "Bechtle",
+] as const;
+export type BrokerHolder = (typeof BROKER_HOLDERS)[number] | "not yet awarded";
+
+/**
+ * One colour per holder, so the map reads as territory at a glance.
+ * Every swatch is paired with the holder's NAME in the legend and in each
+ * tooltip — colour never carries the meaning alone (DESIGN.md).
+ */
+export const HOLDER_COLOR: Record<string, { fill: string; stroke: string; text: string }> = {
+  "Protinus IT": {
+    fill: "var(--color-accent-soft)",
+    stroke: "var(--color-accent)",
+    text: "var(--color-accent-fg)",
+  },
+  SoftwareOne: {
+    fill: "var(--color-warm-soft)",
+    stroke: "var(--color-warm)",
+    text: "var(--color-warm)",
+  },
+  Centralpoint: {
+    fill: "var(--color-ok-soft)",
+    stroke: "var(--color-ok)",
+    text: "var(--color-ok)",
+  },
+  Bechtle: {
+    fill: "var(--color-cold-soft)",
+    stroke: "var(--color-cold)",
+    text: "var(--color-cold)",
+  },
+  "not yet awarded": {
+    fill: "var(--color-sunken)",
+    stroke: "var(--color-line-strong)",
+    text: "var(--color-fg-mid)",
+  },
+};
 
 export type BrokerContract = {
-  /** Buyer name as published. Matched case-insensitively as a substring. */
+  /** Buyer or collective name as published. Substring-matched, case-insensitive. */
   buyer: string;
-  /** The partner holding the broker position. */
-  holder: string;
-  /** Province, for tinting the map. Null for national/non-geographic bodies. */
-  province: string | null;
-  /** Maximum estimated contract value, as published. Null when not disclosed. */
+  holder: BrokerHolder;
+  /** Member buyers, for collectives. Each is matched like `buyer`. */
+  covers?: string[];
+  /** Provinces to tint. A collective can span several. */
+  provinces: string[];
+  /** Maximum estimated value as published, in euros. Null when not disclosed. */
   valueEur: number | null;
-  /** Free-text term as published — durations are rarely clean dates. */
+  /** Whether valueEur is the whole term or a yearly figure. */
+  valueBasis: "total" | "per year";
+  /** Term as published — durations are rarely clean dates. */
   term: string;
-  /** Year the contract runs to, when it can be stated. Null when unpublished. */
+  /** Year the contract can run to. Null when it cannot be stated. */
   endsBy: number | null;
   /** "held" = awarded and running. "open" = tendered, not yet awarded. */
   status: "held" | "open";
+  /** Bid deadline for open tenders, ISO date. */
+  closes?: string;
   source: string;
-  /** What is NOT established about this row. Empty string when fully verified. */
+  /** What is NOT established here. Empty string when fully verified. */
   unverified: string;
 };
 
 export const BROKER_CONTRACTS: BrokerContract[] = [
+  // ---- Held: the large collectives, where most of the territory sits --------
+  {
+    buyer: "Inkoopkracht Zuid-Holland West",
+    holder: "Protinus IT",
+    covers: [
+      "Delft",
+      "Pijnacker-Nootdorp",
+      "Westland",
+      "Leidschendam-Voorburg",
+      "Midden-Delfland",
+    ],
+    provinces: ["Zuid-Holland"],
+    valueEur: 53_000_000,
+    valueBasis: "total",
+    term: "24 months + 2×12-month extensions",
+    endsBy: null,
+    status: "held",
+    source: "https://www.computable.nl/2022/03/18/protinus-it-softwarebroker-voor-inkoopkracht-zhw/",
+    unverified: "awarded 2022; may have been re-tendered since — treat the end date as unknown",
+  },
+  {
+    buyer: "Drechtsteden",
+    holder: "Protinus IT",
+    covers: [
+      "Alblasserdam",
+      "Dordrecht",
+      "Hardinxveld-Giessendam",
+      "Hendrik-Ido-Ambacht",
+      "Papendrecht",
+      "Sliedrecht",
+      "Zwijndrecht",
+    ],
+    provinces: ["Zuid-Holland"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Joint arrangement of 7 municipalities; Protinus named co-winner",
+    endsBy: null,
+    status: "held",
+    source:
+      "https://www.computable.nl/artikel/nieuws/wie-gunt-wat/7182509/3152533/drechtsteden-kiest-protinus-it-als-softwarebroker.html",
+    unverified: "co-winner, so a second broker also holds part of this; value and term not published",
+  },
+  {
+    buyer: "SSC Ons",
+    holder: "Protinus IT",
+    covers: ["Dalfsen", "Westerveld", "Zwartewaterland", "Kampen", "Zwolle", "Overijssel"],
+    provinces: ["Overijssel", "Drenthe"],
+    valueEur: 6_000_000,
+    valueBasis: "per year",
+    term: "3 years + 3×1-year extensions (max 6), explicitly Single Source",
+    endsBy: null,
+    status: "held",
+    source: "https://www.dutchitleaders.nl/news/183016/protinus-it-wint-aanbesteding-softwarebroker-bij-ssc-ons",
+    unverified: "start date not published, so the end year cannot be stated",
+  },
+
+  // ---- Held: single buyers -------------------------------------------------
   {
     buyer: "Rotterdam",
     holder: "Protinus IT",
-    province: "Zuid-Holland",
+    provinces: ["Zuid-Holland"],
     valueEur: 160_000_000,
-    term: "2 years + 2×1-year extensions (renewal of a 2020 contract)",
+    valueBasis: "total",
+    term: "2 years + 2×1-year extensions (renewal of a 2020 win, then €100M)",
     endsBy: 2029,
     status: "held",
     source:
       "https://www.computable.nl/2025/04/25/protinus-it-sleept-opnieuw-grote-deal-rotterdam-in-de-wacht/",
-    unverified: "exact start and end dates not published; endsBy is the maximum term",
+    unverified: "exact start/end dates not published; endsBy is the maximum term",
   },
   {
     buyer: "Den Haag",
     holder: "SoftwareOne",
-    province: "Zuid-Holland",
+    provinces: ["Zuid-Holland"],
     valueEur: null,
+    valueBasis: "total",
     term: "4 years + up to 2 more, awarded January 2024",
     endsBy: 2030,
     status: "held",
@@ -66,8 +178,9 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   {
     buyer: "Zoetermeer",
     holder: "Protinus IT",
-    province: "Zuid-Holland",
+    provinces: ["Zuid-Holland"],
     valueEur: 40_000_000,
+    valueBasis: "total",
     term: "4 years, running since February 2026 (renewal)",
     endsBy: 2030,
     status: "held",
@@ -78,19 +191,22 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
   {
     buyer: "Dronten",
     holder: "Protinus IT",
-    province: "Flevoland",
+    provinces: ["Flevoland"],
     valueEur: 20_000_000,
+    valueBasis: "total",
     term: "2 years + 2×24-month extensions",
     endsBy: null,
     status: "held",
-    source: "https://protinus.nl/nieuws/protinus-it-wint-aanbesteding-voor-softwarelevering-aan-gemeente-dronten/",
+    source:
+      "https://protinus.nl/nieuws/protinus-it-wint-aanbesteding-voor-softwarelevering-aan-gemeente-dronten/",
     unverified: "award date not established, so the end year cannot be stated",
   },
   {
     buyer: "Fryske Marren",
     holder: "Protinus IT",
-    province: "Friesland",
+    provinces: ["Friesland"],
     valueEur: 1_600_000,
+    valueBasis: "total",
     term: "4 years (€400k/year), from 1 January 2026",
     endsBy: 2030,
     status: "held",
@@ -99,45 +215,153 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     unverified: "",
   },
   {
+    buyer: "Gouda",
+    holder: "Protinus IT",
+    provinces: ["Zuid-Holland"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Standard-software broker with advisory services, listed 2026",
+    endsBy: null,
+    status: "held",
+    source: "https://nl.openprocurements.com/cpv/72268000/",
+    unverified: "holder listed on the tender record; no award press release found to confirm",
+  },
+  {
+    buyer: "Drenthe",
+    holder: "SoftwareOne",
+    provinces: ["Drenthe"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "4 years, awarded October 2025 (renewal); ~1000 workplaces",
+    endsBy: 2029,
+    status: "held",
+    source:
+      "https://www.softwareone.com/nl-nl/nieuwsberichten/2025/10/27/softwareone-wint-wederom-software-aanbesteding-provincie-drenthe",
+    unverified: "value not disclosed",
+  },
+  {
+    buyer: "Westerkwartier",
+    holder: "SoftwareOne",
+    provinces: ["Groningen"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Standard software licences and related services, awarded June 2025",
+    endsBy: null,
+    status: "held",
+    source:
+      "https://beleidsradar.nl/documenten/aanbesteding-software-broker-gemeente-westerkwartier-b0b2a91b-7e06-4c6b-b007-9d51bdb2214b",
+    unverified: "value and term not published",
+  },
+  {
+    buyer: "Zuidoost Brabant",
+    holder: "SoftwareOne",
+    provinces: ["Noord-Brabant"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "14 decentral government bodies, awarded 2022",
+    endsBy: null,
+    status: "held",
+    source: "https://www.softwareone.com/nl-nl/nieuwsberichten/2022/02/11/softwareone-wint-aanbesteding-zuidoost-brabant",
+    unverified: "awarded 2022 — likely re-tendered by now; treat as stale",
+  },
+  {
     buyer: "Stichtse Vecht",
     holder: "Protinus IT",
-    province: "Utrecht",
+    provinces: ["Utrecht"],
     valueEur: null,
+    valueBasis: "total",
     term: '"EA - Software broker dienstverlening", listed 2021',
     endsBy: null,
     status: "held",
     source: "https://nl.openprocurements.com/supplier/protinus-it/",
-    unverified: "may have lapsed or been re-tendered since 2021 — treat as stale",
+    unverified: "listed 2021 — may have lapsed or been re-tendered; treat as stale",
   },
   {
     buyer: "Noaberkracht",
     holder: "Protinus IT",
-    province: "Overijssel",
+    covers: ["Dinkelland", "Tubbergen"],
+    provinces: ["Overijssel"],
     valueEur: null,
+    valueBasis: "total",
     term: '"Softwaremakelaar" for seven Twente municipalities, listed 2020',
     endsBy: null,
     status: "held",
     source: "https://nl.openprocurements.com/supplier/protinus-it/",
-    unverified: "may have lapsed or been re-tendered since 2020 — treat as stale",
+    unverified: "listed 2020 — may have lapsed or been re-tendered; treat as stale",
+  },
+
+  // ---- Open: nobody holds these yet. This is where CBA can still move. -----
+  {
+    buyer: "Provincie Utrecht",
+    holder: "not yet awarded",
+    provinces: ["Utrecht"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Softwarebroker-dienstverlening: licences, SaaS, implementation, support",
+    endsBy: null,
+    status: "open",
+    closes: "2026-09-25",
+    source: "https://nl.openprocurements.com/cpv/72268000/",
+    unverified: "value not published",
   },
   {
-    // The one that matters most: still winnable.
+    buyer: "Nieuwegein",
+    holder: "not yet awarded",
+    provinces: ["Utrecht"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Softwarebroker: standard software licences and related services",
+    endsBy: null,
+    status: "open",
+    closes: "2026-09-25",
+    source: "https://nl.openprocurements.com/cpv/72268000/",
+    unverified: "value not published",
+  },
+  {
+    buyer: "De Wolden Hoogeveen",
+    holder: "not yet awarded",
+    provinces: ["Drenthe"],
+    valueEur: null,
+    valueBasis: "total",
+    term: '"EA Softwarebroker", announced 24 August 2026',
+    endsBy: null,
+    status: "open",
+    closes: "2026-10-05",
+    source: "https://nl.openprocurements.com/cpv/72266000/",
+    unverified: "value not published",
+  },
+  {
+    buyer: "ISNV Noord Veluwe",
+    holder: "not yet awarded",
+    covers: ["Putten", "Bunschoten"],
+    provinces: ["Gelderland"],
+    valueEur: null,
+    valueBasis: "total",
+    term: "Broker Standaardsoftware: purchase, delivery, management of installed base",
+    endsBy: null,
+    status: "open",
+    closes: "2026-10-28",
+    source: "https://nl.openprocurements.com/cpv/72268000/",
+    unverified: "value not published",
+  },
+  {
     buyer: "Leeuwarden",
     holder: "not yet awarded",
-    province: "Friesland",
+    provinces: ["Friesland"],
     valueEur: null,
+    valueBasis: "total",
     term: "European procedure for a single supplier, announced 18 November 2025",
     endsBy: null,
     status: "open",
     source: "https://nl.openprocurements.com/buyer/gemeente-leeuwarden/",
-    unverified: "bidders reported as Bechtle and SoftwareONE; no award found",
+    unverified: "bidders reported as Bechtle and SoftwareONE; no award found, no close date",
   },
 ];
 
 /**
- * The broker holding a buyer's software, or null when none is known.
- * Substring match because TenderNed publishes "Gemeente Rotterdam" while the
- * contract is reported against "Rotterdam".
+ * The broker holding a buyer's software, or null when none is on file.
+ * Checks the contract's own name and every member of a collective, so a tender
+ * from Dordrecht resolves through Drechtsteden.
  *
  * A null result means "no contract on file" — NOT "sells direct". Coverage is
  * hand-curated from trade press and is deliberately incomplete.
@@ -145,22 +369,49 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
 export function brokerFor(buyer: string | null): BrokerContract | null {
   if (!buyer) return null;
   const b = buyer.toLowerCase();
-  return BROKER_CONTRACTS.find((c) => b.includes(c.buyer.toLowerCase())) ?? null;
+  return (
+    BROKER_CONTRACTS.find(
+      (c) =>
+        b.includes(c.buyer.toLowerCase()) ||
+        (c.covers ?? []).some((m) => b.includes(m.toLowerCase()))
+    ) ?? null
+  );
 }
 
-/** Province → the partners holding contracts there, for tinting the map. */
-export function holdersByProvince(): Map<string, BrokerContract[]> {
-  const m = new Map<string, BrokerContract[]>();
+/**
+ * Province → the holders with a HELD contract touching it, deduped.
+ * Open tenders deliberately do not tint a province: nobody holds them.
+ */
+export function holdersByProvince(): Map<string, BrokerHolder[]> {
+  const m = new Map<string, Set<BrokerHolder>>();
   for (const c of BROKER_CONTRACTS) {
-    if (!c.province) continue;
-    const list = m.get(c.province) ?? [];
-    list.push(c);
-    m.set(c.province, list);
+    if (c.status !== "held") continue;
+    for (const p of c.provinces) {
+      const set = m.get(p) ?? new Set<BrokerHolder>();
+      set.add(c.holder);
+      m.set(p, set);
+    }
   }
-  return m;
+  return new Map([...m].map(([p, s]) => [p, [...s]]));
 }
 
-export function formatValue(v: number | null): string {
-  if (v === null) return "value not published";
-  return v >= 1_000_000 ? `€${Math.round(v / 1_000_000)}M` : `€${(v / 1000).toFixed(0)}k`;
+/** Contracts touching a province, for tooltips. */
+export function contractsInProvince(province: string): BrokerContract[] {
+  return BROKER_CONTRACTS.filter(
+    (c) => c.status === "held" && c.provinces.includes(province)
+  );
+}
+
+export function formatValue(c: BrokerContract): string {
+  if (c.valueEur === null) return "value not published";
+  const n =
+    c.valueEur >= 1_000_000
+      ? `€${Math.round(c.valueEur / 1_000_000)}M`
+      : `€${Math.round(c.valueEur / 1000)}k`;
+  return c.valueBasis === "per year" ? `${n}/yr` : n;
+}
+
+/** How many buyers a contract actually covers — collectives count their members. */
+export function buyerCount(c: BrokerContract): number {
+  return 1 + (c.covers?.length ?? 0);
 }

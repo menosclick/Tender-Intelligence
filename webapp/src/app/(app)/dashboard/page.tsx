@@ -59,14 +59,25 @@ export default async function DashboardPage() {
         // filtering on gte alone silently dropped qualified tenders from the app.
         .or("days_to_deadline.gte.0,days_to_deadline.is.null")
         .order("score", { ascending: false }),
-      admin.from("tender_feedback").select("tender_id,value").eq("kind", "relevance"),
+      admin.from("tender_feedback").select("tender_id,kind,value"),
       admin.from("bid_pipeline").select("tender_id,stage"),
       getOperationalActions(admin),
       getMilestoneEvents(admin),
     ]);
 
   const notRelevantIds = new Set(
-    (feedback ?? []).filter((f) => f.value === "not_relevant").map((f) => f.tender_id)
+    (feedback ?? [])
+      .filter((f) => f.kind === "relevance" && f.value === "not_relevant")
+      .map((f) => f.tender_id)
+  );
+  // Tenders CBA has decided against. Two independent signals, because either
+  // can exist without the other: a board card moved to a terminal stage, and a
+  // recorded outcome (9117 carries no_bid with no board card at all).
+  const CLOSED_STAGES = ["Dropped", "Lost", "Won"];
+  const decidedAgainst = new Set(
+    (feedback ?? [])
+      .filter((f) => f.kind === "outcome" && (f.value === "no_bid" || f.value === "lost"))
+      .map((f) => f.tender_id)
   );
   const openRows = ((open ?? []) as Row[]).filter((t) => !notRelevantIds.has(t.id));
   const qualified = openRows.filter((t) => t.label === "Hot" || t.label === "Warm");
@@ -137,50 +148,22 @@ export default async function DashboardPage() {
       .map(([d, n]) => ({ label: d, count: n })),
   ].map((r) => ({ ...r, href: `/inbox?label=all&domain=${encodeURIComponent(r.label)}` }));
 
-  // Netherlands map buckets from the publications' NUTS codes.
-  const provinceMap = new Map<string, MapTender[]>();
-  const otherRegions: MapTender[] = [];
-  let nationalCount = 0;
-  let noDataCount = 0;
-  // A tender can be published for several regions; only the first is pinned,
-  // so the map says how many it is simplifying rather than implying precision.
-  let multiRegionCount = 0;
-  for (const t of openRows) {
-    const nuts = parseNutsCodes(extrasById.get(t.id)?.raw_json ?? null);
-    const entry = nuts[0];
-    if (nuts.length > 1) multiRegionCount++;
-    if (!entry) {
-      noDataCount++;
-      continue;
-    }
-    const mt: MapTender = {
-      id: t.id,
-      title: t.title ?? `Tender #${t.id}`,
-      buyer: t.buyer ?? "",
-      domain: domainOf(t),
-      label: t.label ?? "unscored",
-      pipelineStage: t.pipeline_stage ? stageLabel(t.pipeline_stage) : null,
-      nutsName: entry.omschrijving,
-    };
-    if (entry.code === "NL") {
-      nationalCount++;
-    } else {
-      const province = NUTS2_PROVINCE[entry.code.slice(0, 4)];
-      if (province) {
-        const list = provinceMap.get(province) ?? [];
-        list.push(mt);
-        provinceMap.set(province, list);
-      } else {
-        otherRegions.push(mt);
-      }
-    }
-  }
-  const provinces: ProvinceBucket[] = [...provinceMap.entries()].map(
-    ([province, tenders]) => ({ province, tenders })
-  );
+  // The NUTS/province bucketing that used to feed this map was removed with
+  // the opportunity-count map: only 5 of 16 open tenders carry a province,
+  // so it computed a pattern that did not exist. The map now renders partner
+  // territory from a static curated file and needs no tender data.
 
-  // Latest qualified: five most recently analyzed Hot/Warm tenders.
+  // Latest qualified: five most recently analyzed Hot/Warm tenders that are
+  // still LIVE. A tender CBA has already dropped, lost or decided not to bid
+  // is not something to look at first thing in the morning — it was showing
+  // Dropped cards here (Derson, 2026-09-07). Scoped to this panel on purpose:
+  // the KPIs above still count the full open set.
   const latestQualified = [...qualified]
+    .filter(
+      (t) =>
+        !decidedAgainst.has(t.id) &&
+        !(t.pipeline_stage && CLOSED_STAGES.includes(t.pipeline_stage))
+    )
     .sort((a, b) => {
       const ta = extrasById.get(a.id)?.analyzed_at ?? extrasById.get(a.id)?.scraped_at ?? "";
       const tb = extrasById.get(b.id)?.analyzed_at ?? extrasById.get(b.id)?.scraped_at ?? "";
@@ -471,14 +454,8 @@ export default async function DashboardPage() {
         <ChartCard title="Open tenders by solution domain">
           <HBarList rows={byDomain} showPct />
         </ChartCard>
-        <ChartCard title="Netherlands opportunity map">
-          <NetherlandsMap
-            provinces={provinces}
-            nationalCount={nationalCount}
-            otherRegions={otherRegions}
-            noDataCount={noDataCount}
-            multiRegionCount={multiRegionCount}
-          />
+        <ChartCard title="Partner territory — who brokers which buyer">
+          <NetherlandsMap />
         </ChartCard>
       </div>
 

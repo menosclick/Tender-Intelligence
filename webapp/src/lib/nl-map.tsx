@@ -1,20 +1,28 @@
-import Link from "next/link";
 import { NL_PROVINCES, NL_MAP_VIEWBOX } from "./nl-provinces";
 import {
   BROKER_CONTRACTS,
+  BROKER_HOLDERS,
+  HOLDER_COLOR,
   holdersByProvince,
+  contractsInProvince,
   formatValue,
+  buyerCount,
 } from "./partner-territory";
 
-// Netherlands opportunity map — real province geometry (CBS/Kadaster
+// Netherlands PARTNER-TERRITORY map — real province geometry (CBS/Kadaster
 // generalized borders baked into nl-provinces.ts as static SVG paths; no
-// mapping library). Provinces with open tenders get a tinted fill and a
-// count badge at their centroid; the title carries the tender details.
+// mapping library). Each province is filled with the colour of the partner
+// holding a single-source software-broker contract there.
 //
-// Location source: the TenderNed publication's NUTS codes (place of
-// performance as published). Buyer addresses are NEVER used as project
-// locations. Tenders published with national scope (code "NL") are counted
-// separately below the map instead of being pinned anywhere.
+// It used to plot open tenders per province with a count badge. That was
+// dropped (Derson, 2026-09-07): only 5 of 16 open tenders carry a province at
+// all — the other 10 publish NUTS "NL" and pin nowhere — so the counts implied
+// a geographic pattern that did not exist, and CBA does not decide by region
+// anyway. What DOES decide the sale is who brokers the buyer's software, since
+// a brokered buyer cannot be sold direct. Contract data: partner-territory.ts.
+//
+// MapTender / ProvinceBucket / parseNutsCodes / NUTS2_PROVINCE below are still
+// exported: the dashboard uses them to derive its own per-province buckets.
 
 export type MapTender = {
   id: number;
@@ -70,32 +78,18 @@ export const NUTS2_PROVINCE: Record<string, string> = {
   NL42: "Limburg",
 };
 
-export function NetherlandsMap({
-  provinces,
-  nationalCount,
-  otherRegions,
-  noDataCount = 0,
-  multiRegionCount = 0,
-}: {
-  provinces: ProvinceBucket[];
-  nationalCount: number;
-  otherRegions: MapTender[]; // NUTS codes outside the known table
-  noDataCount?: number; // tenders whose publication carries no NUTS data
-  multiRegionCount?: number; // published for several regions, pinned to the first
-}) {
-  const byProvince = new Map(provinces.map((p) => [p.province, p.tenders]));
-  const regional = provinces.reduce((n, p) => n + p.tenders.length, 0);
-  const brokered = holdersByProvince();
-  const openWindows = BROKER_CONTRACTS.filter((c) => c.status === "open");
 
-  if (regional === 0 && nationalCount === 0 && otherRegions.length === 0) {
-    return (
-      <p className="py-6 text-center text-xs text-fg-soft">
-        No open tenders with location data right now. Tenders appear here as
-        TenderNed publishes their NUTS region.
-      </p>
-    );
-  }
+// Takes no tender data: the map is about partner territory now, and the
+// contracts are a static curated file rather than anything from the DB.
+export function NetherlandsMap() {
+  const brokered = holdersByProvince();
+  const held = BROKER_CONTRACTS.filter((c) => c.status === "held");
+  const openWindows = BROKER_CONTRACTS.filter((c) => c.status === "open");
+  // Holders actually present in the data, in BROKER_HOLDERS order, so the
+  // legend never advertises a colour the map does not use.
+  const holdersShown = BROKER_HOLDERS.filter((h) =>
+    held.some((c) => c.holder === h)
+  );
 
   return (
     <div>
@@ -103,195 +97,114 @@ export function NetherlandsMap({
         viewBox={NL_MAP_VIEWBOX}
         className="mx-auto block w-full max-w-80"
         role="img"
-        aria-label={`Map of the Netherlands: ${regional} open tender${regional === 1 ? "" : "s"} with a published region, and ${brokered.size} province${brokered.size === 1 ? "" : "s"} where a partner holds a software-broker contract`}
+        aria-label={`Map of the Netherlands showing which partner holds the software-broker contract in each province. ${holdersShown.join(", ")} hold contracts across ${brokered.size} provinces.`}
       >
-        {/* Diagonal hatch marks provinces where a partner holds the broker
-            position. Hatch, not a second fill: the fill already encodes open
-            tenders, and the two facts are independent — a province can have
-            both, either, or neither. */}
-        <defs>
-          <pattern
-            id="broker-hatch"
-            width="7"
-            height="7"
-            patternUnits="userSpaceOnUse"
-            patternTransform="rotate(45)"
-          >
-            <line
-              x1="0"
-              y1="0"
-              x2="0"
-              y2="7"
-              stroke="var(--color-warm)"
-              strokeWidth="1.6"
-              opacity="0.55"
-            />
-          </pattern>
-        </defs>
         {NL_PROVINCES.map((p) => {
-          const tenders = byProvince.get(p.name) ?? [];
-          const has = tenders.length > 0;
-          const contracts = brokered.get(p.name) ?? [];
-          const brokerNote = contracts.length
-            ? ` ⟶ BROKER TERRITORY: ${contracts
+          const holders = brokered.get(p.name) ?? [];
+          // A province can be split between two brokers (Zuid-Holland is:
+          // Protinus in Rotterdam, SoftwareOne in Den Haag). Fill with the
+          // first holder and say so in the tooltip rather than pretending
+          // one partner owns the whole province.
+          const primary = holders[0];
+          const colour = primary ? HOLDER_COLOR[primary] : null;
+          const contracts = contractsInProvince(p.name);
+          const tip = contracts.length
+            ? `${p.name} — ${contracts
                 .map(
                   (c) =>
-                    `${c.buyer} held by ${c.holder} (${formatValue(c.valueEur)}${
+                    `${c.buyer}: ${c.holder} (${formatValue(c)}${
                       c.endsBy ? `, to ${c.endsBy}` : ""
-                    })`
+                    })${c.covers ? ` — covers ${buyerCount(c)} buyers` : ""}`
                 )
-                .join("; ")}`
-            : "";
+                .join(" | ")}`
+            : `${p.name} — no broker contract on file`;
           return (
             <g key={p.name}>
-              <title>
-                {(has
-                  ? `${p.name} — ${tenders
-                      .map(
-                        (m) =>
-                          `${m.title} · ${m.buyer} · ${m.domain} · ${m.label}${
-                            m.pipelineStage ? ` · ${m.pipelineStage}` : ""
-                          } · NUTS: ${m.nutsName}`
-                      )
-                      .join(" | ")}`
-                  : p.name) + brokerNote}
-              </title>
+              <title>{tip}</title>
               <path
                 d={p.d}
-                className={has ? "fill-accent-soft" : "fill-sunken"}
-                stroke="var(--color-surface)"
+                fill={colour ? colour.fill : "var(--color-sunken)"}
+                stroke={colour ? colour.stroke : "var(--color-surface)"}
                 strokeWidth="1.5"
                 strokeLinejoin="round"
               />
-              {contracts.length > 0 && (
-                <path
-                  d={p.d}
-                  fill="url(#broker-hatch)"
-                  stroke="var(--color-warm)"
-                  strokeWidth="1.5"
-                  strokeLinejoin="round"
-                  pointerEvents="none"
-                />
-              )}
-              {has && (
-                <>
-                  <circle
-                    cx={p.label[0]}
-                    cy={p.label[1]}
-                    r="14"
-                    className="fill-surface"
-                    stroke="var(--color-accent)"
-                    strokeWidth="1.5"
-                  />
-                  <text
-                    x={p.label[0]}
-                    y={p.label[1]}
-                    textAnchor="middle"
-                    dominantBaseline="central"
-                    className="fill-accent-fg text-[15px] font-semibold tabular-nums"
-                  >
-                    {tenders.length}
-                  </text>
-                </>
-              )}
             </g>
           );
         })}
       </svg>
-      {regional > 0 && (
-        <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-mid">
-          {provinces
-            .slice()
-            .sort((a, b) => b.tenders.length - a.tenders.length)
-            .map((p) => (
-              <li key={p.province}>
-                <span className="font-medium text-fg">{p.province}</span>{" "}
-                <span className="tabular-nums">{p.tenders.length}</span>
-              </li>
-            ))}
-        </ul>
-      )}
 
-      <div className="mt-3 space-y-1 text-xs text-fg-mid">
-        {nationalCount > 0 && (
-          <p>
-            <Link href="/inbox" className="font-medium text-accent-fg hover:underline">
-              {nationalCount} tender{nationalCount === 1 ? "" : "s"}
-            </Link>{" "}
-            published with national scope (no single region).
-          </p>
-        )}
-        {otherRegions.length > 0 && (
-          <p>
-            {otherRegions.length} in regions outside the province table:{" "}
-            {[...new Set(otherRegions.map((m) => m.nutsName))].join(", ")}.
-          </p>
-        )}
-        {noDataCount > 0 && (
-          <p>
-            {noDataCount} without location data in the publication.
-          </p>
-        )}
-      </div>
-      <p className="mt-2 text-xs leading-relaxed text-fg-soft">
-        Locations come from the TenderNed publication&apos;s NUTS region (place
-        of performance as published) — buyer addresses are never shown as
-        project locations.
-        {multiRegionCount > 0 &&
-          ` ${multiRegionCount} tender${multiRegionCount === 1 ? " lists" : "s list"} more than one region; each is pinned to the first.`}
-      </p>
+      {/* Legend: swatch + the holder's name, never colour alone. */}
+      <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+        {holdersShown.map((h) => {
+          const n = held.filter((c) => c.holder === h).length;
+          return (
+            <li key={h} className="flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 shrink-0 rounded-sm"
+                style={{
+                  backgroundColor: HOLDER_COLOR[h].fill,
+                  outline: `1px solid ${HOLDER_COLOR[h].stroke}`,
+                }}
+              />
+              <span className="font-medium text-fg">{h}</span>
+              <span className="tabular-nums text-fg-soft">{n}</span>
+            </li>
+          );
+        })}
+        <li className="flex items-center gap-1.5">
+          <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-sunken outline outline-1 outline-line-strong" />
+          <span className="text-fg-soft">no contract on file</span>
+        </li>
+      </ul>
 
-      {/* Partner territory. This is the reason the map earns its space: where a
-          buyer has appointed a single-source software broker, CBA cannot sell
-          direct — the broker IS the route to market. Protinus is vendor-neutral
-          and routes specialist resellers into its accounts, so a held territory
-          is a door, not a wall. */}
-      <div className="mt-4 border-t border-line pt-3">
-        <div className="flex items-baseline justify-between gap-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-fg-mid">
-            Partner territory
-          </h3>
-          <span className="flex items-center gap-1.5 text-xs text-fg-soft">
-            <span
-              className="h-2.5 w-2.5 rounded-sm ring-1 ring-inset ring-warm/50"
-              style={{ backgroundColor: "var(--color-warm-soft)" }}
-            />
-            broker held
-          </span>
-        </div>
-        <ul className="mt-2 space-y-1.5">
-          {BROKER_CONTRACTS.filter((c) => c.status === "held").map((c) => (
+      {/* Held contracts, biggest coverage first — a collective covering seven
+          municipalities matters more than a single town. */}
+      <ul className="mt-3 space-y-1.5">
+        {held
+          .slice()
+          .sort((a, b) => buyerCount(b) - buyerCount(a))
+          .map((c) => (
             <li key={c.buyer} className="flex items-baseline justify-between gap-3 text-xs">
               <span className="min-w-0 truncate">
-                <span className="font-medium text-fg">{c.buyer}</span>{" "}
-                <span className="text-fg-mid">· {c.holder}</span>
+                <span className="font-medium text-fg">{c.buyer}</span>
+                {c.covers && (
+                  <span className="text-fg-soft"> +{c.covers.length}</span>
+                )}{" "}
+                <span style={{ color: HOLDER_COLOR[c.holder].text }}>{c.holder}</span>
               </span>
               <span className="shrink-0 tabular-nums text-fg-soft">
-                {formatValue(c.valueEur)}
+                {formatValue(c)}
                 {c.endsBy ? ` · to ${c.endsBy}` : ""}
               </span>
             </li>
           ))}
-        </ul>
-        {openWindows.length > 0 && (
-          <div className="mt-3 rounded-lg bg-ok-soft px-2.5 py-2">
-            <p className="text-xs font-semibold text-ok">
-              Open — no broker appointed yet
-            </p>
+      </ul>
+
+      {openWindows.length > 0 && (
+        <div className="mt-3 rounded-lg bg-ok-soft px-2.5 py-2">
+          <p className="text-xs font-semibold text-ok">
+            No broker appointed yet — {openWindows.length} open
+          </p>
+          <ul className="mt-1 space-y-0.5">
             {openWindows.map((c) => (
-              <p key={c.buyer} className="mt-0.5 text-xs text-fg-mid">
-                <span className="font-medium text-fg">{c.buyer}</span> — {c.term}.
-                {c.unverified ? ` ${c.unverified}.` : ""}
-              </p>
+              <li key={c.buyer} className="text-xs text-fg-mid">
+                <span className="font-medium text-fg">{c.buyer}</span>
+                {c.covers && <span className="text-fg-soft"> +{c.covers.length}</span>}
+                {c.closes ? ` — bids close ${c.closes}` : " — no close date published"}
+              </li>
             ))}
-          </div>
-        )}
-        <p className="mt-2 text-xs leading-relaxed text-fg-soft">
-          Hand-curated from public award notices, not scraped — a buyer missing
-          here means no contract is on file, not that it buys direct. Sources and
-          what is still unverified: see the partner-territory research note.
-        </p>
-      </div>
+          </ul>
+        </div>
+      )}
+
+      <p className="mt-2 text-xs leading-relaxed text-fg-soft">
+        Where a buyer appoints a single-source software broker, licences route
+        through that partner rather than direct. Hand-curated from public award
+        notices, not scraped — a buyer missing here means no contract is on
+        file, not that it buys direct. Some rows are older awards that may have
+        been re-tendered; each carries its source and caveat in
+        <code className="mx-1">partner-territory.ts</code>.
+      </p>
     </div>
   );
 }
