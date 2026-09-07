@@ -549,3 +549,48 @@ no-space overlong title, "Demo - Openbaar".
 
 **Not changed:** no DB writes, no scraper or n8n changes. The 8416/8417
 duplicate-tender row deletion is a separate, still-open item.
+
+---
+
+## 2026-09-07 (2) — Inbox: the 8416/8417 duplicate finally deleted
+
+**Derson:** "en el tender inbox hay varias ops repetidas."
+
+**Checked all 18 inbox rows. Exactly ONE real duplicate.** 8416 and 8417 are
+byte-for-byte the same record — same title, same buyer (Rijkswaterstaat CIV),
+same CPV, and crucially the same TenderNed URL (aanbesteding/593229) — created
+3.6 seconds apart by a double form submit. `external_id` is minted from
+`Date.now()` (`manual-1785840407771` / `...411869`), which is exactly why the
+UNIQUE index could never catch it. The guard added on 2026-08-24 now refuses
+this on name+authority, so it cannot recur; it just could not clean up what
+was already there.
+
+**The rest only LOOK repeated, and must not be touched.** Four Identity/Access
+Management tenders sit in the inbox from four different buyers: Radboud
+Universiteit (5784), Gemeente Zaanstad (6172), DUO (6169) and Hogeschool Van
+Hall Larenstein (10063). Four separate opportunities. The Buyer column already
+distinguishes them.
+
+**Which row to delete was decided by dependents, not by id.**
+
+| | bid_pipeline | tender_feedback | milestones | actions |
+|---|---|---|---|---|
+| 8416 | 0 | 0 | 0 | 0 |
+| 8417 | 1 (Dropped) | 1 (relevant, derson@) | 0 | 0 |
+
+8416 was fully orphaned; 8417 carries Derson's own 2026-08-04 triage. Deleting
+the lower id was correct here precisely because it held no work — worth stating,
+since the instinct is to keep the earlier record.
+
+**Done, with guards.** Row backed up first to
+`docs/deleted-row-8416-2026-09-07.json` (the delete is irreversible). The
+delete script re-checked both invariants immediately before firing and would
+have aborted if 8416 had gained a dependent or 8417 had lost its work.
+DELETE returned 200 with the row echoed back.
+
+**Verified after:** 8416 gone; 8417 still present WITH its Dropped card and
+its `relevant` feedback intact; inbox 18 → 17 rows; zero exact-title
+duplicates remaining; the four Identity tenders all still there.
+
+**Not a code change** — no deploy needed. This closes the item that had been
+open and blocked since 2026-08-24.
