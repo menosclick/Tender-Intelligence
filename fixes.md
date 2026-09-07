@@ -487,3 +487,65 @@ this is a board summary, not a replacement for the report to management. That
 needs a schema migration + intake form + a one-time backfill of ~13 historical
 rows. Deliberately deferred: Derson's role at the client is under review and
 the migration has no user if the report stops being his.
+
+---
+
+## 2026-09-07 — Calendar: one opportunity no longer reads as many
+
+**Derson:** "the opportunities repeated in the calendar of the webapp."
+
+**The DB was checked first, and it is clean.** No duplicate rows at any level:
+`bid_pipeline` 13 rows, zero tenders with more than one card; `v_app_tenders`
+returned 5 distinct ids for 5 ids; `tender_milestones` 23 rows with zero
+`(tender_id, kind)` pairs appearing twice. Nothing needed deleting.
+
+**What was actually happening.** The calendar tracks 4 tenders and renders 17
+events, because a tender past Analysis owns up to 10 extracted dates
+(publication → questions → NvI → submission → demo → provisional award →
+objection → PoC → final award → contract start). Every chip and every table
+row printed the FULL Dutch title, and those titles share boilerplate
+("Leveren, implementeren en onderhouden van een ..."), so the same long string
+tiled the month and the list. Tender 6172 appeared 7 times, 9315 another 7 —
+all genuinely different dates, reading as duplicates.
+
+This is the same complaint as 2026-07-21 ("Está duplicada lo de upcoming
+milestones"), fixed then on the dashboard panel only. The calendar never got
+the same treatment.
+
+**Fixed.**
+- `shortTenderTitle()` in `calendar-data.ts` strips the repeated Dutch verb
+  preamble and trailing procedure noise ("- Openbaar"), then word-truncates.
+  Falls back to the original when a title is *all* boilerplate, which would
+  otherwise leave a bare "een". `tenderShort` added to `MilestoneEvent`.
+- Grid chips lead with the MILESTONE in semibold, tender name underneath at a
+  smaller size. Hierarchy is size + weight, never opacity — DESIGN.md pins
+  `fg-soft` at 0.51 precisely because `fg-soft/60` measures 2.3:1, and an
+  earlier draft of this chip reintroduced that exact bug.
+- A colored left rail keys each tender, assigned by first-appearance order
+  over ALL events so a tender keeps its hue when paging months. Order, not
+  `id % n`: sparse ids collide. Palette of 5 reuses only from a 6th concurrent
+  tender, and the tender is still named in text on every chip, so color never
+  carries meaning alone.
+- Cell height 5.5rem → 7rem and `MAX_CHIPS_PER_DAY` 3 → 2, since two-line
+  chips are ~double height. Overflow tooltip is newline-separated.
+- Both surfaces now count opportunities alongside dates: "3 tracked dates
+  across 2 opportunities this month", "All upcoming dates · 17 across 4
+  opportunities". That sentence is the direct answer to the complaint.
+
+**A wrong first attempt, recorded.** The list table first got consecutive-row
+grouping (print the name once, indent repeats with "↳"). Rendering it against
+real data showed why that fails: the table is date-sorted, so one tender's
+dates never sit adjacent — grouping almost never triggered, and where it did
+it indented a row under a sibling 24 days earlier. Replaced with the short
+title on every row, full title in the tooltip.
+
+**Verified with real production data, not just a compile.** `tsc --noEmit`
+clean, `next build` clean. `MonthGrid` server-rendered against live Supabase
+for Sep/Oct/Nov 2026 and Jan 2027: rail hues stable per tender across all four
+months (9315 accent, 6172 ok, 8254 warm), milestone leads every chip. Synthetic
+5-events-on-one-day cluster renders 2 chips + "+3 more" with the overflow
+tooltip intact. Edge cases checked: empty title, all-boilerplate title,
+no-space overlong title, "Demo - Openbaar".
+
+**Not changed:** no DB writes, no scraper or n8n changes. The 8416/8417
+duplicate-tender row deletion is a separate, still-open item.

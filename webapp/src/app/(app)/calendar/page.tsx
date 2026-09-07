@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { getMilestoneEvents } from "@/lib/calendar-data";
+import { getMilestoneEvents, shortTenderTitle } from "@/lib/calendar-data";
 import { PageHeader, btnSecondary, microLabel } from "@/lib/ui";
 import {
   MonthGrid,
@@ -26,6 +26,9 @@ export default async function CalendarPage({
 
   const admin = createSupabaseAdmin();
   const events = await getMilestoneEvents(admin);
+  // One tender can own ten dates. Counting the opportunities alongside the
+  // dates stops a long list reading as a list of duplicates.
+  const tenderCount = new Set(events.map((e) => e.tenderId)).size;
   const prev = shiftMonth(month, -1);
   const next = shiftMonth(month, 1);
   const canGoBack = prev >= nowMonth;
@@ -86,7 +89,10 @@ export default async function CalendarPage({
         <MonthGrid month={month} events={events} />
       </div>
 
-      <h2 className={`${microLabel} mt-8`}>All upcoming dates · {events.length}</h2>
+      <h2 className={`${microLabel} mt-8`}>
+        All upcoming dates · {events.length} across {tenderCount}{" "}
+        {tenderCount === 1 ? "opportunity" : "opportunities"}
+      </h2>
       <div className="relative mt-2 overflow-x-auto rounded-xl border border-line bg-surface">
         <table className="w-full min-w-[36rem] text-sm">
           <thead>
@@ -105,13 +111,18 @@ export default async function CalendarPage({
                 className="border-b border-line/60 last:border-0"
               >
                 <td className="px-4 py-2.5 tabular-nums text-fg">{e.date}</td>
+                {/* The short name, not the full Dutch title: the list is
+                    date-sorted so one tender's dates never sit together, and
+                    a 60-character title repeated down the column is what made
+                    four opportunities read as seventeen (Derson, 2026-09-07).
+                    Full title stays in the tooltip and one click away. */}
                 <td className="max-w-sm px-4 py-2.5">
                   <Link
                     href={`/tender/${e.tenderId}`}
                     className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
                     title={e.tenderTitle}
                   >
-                    {e.tenderTitle}
+                    {shortTenderTitle(e.tenderTitle, 52)}
                   </Link>
                 </td>
                 <td className="px-4 py-2.5 text-fg-mid">{e.label}</td>

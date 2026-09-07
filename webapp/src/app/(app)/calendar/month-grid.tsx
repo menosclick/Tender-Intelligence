@@ -72,7 +72,29 @@ function chipClass(e: MilestoneEvent): string {
   return "bg-sunken text-fg-mid";
 }
 
-const MAX_CHIPS_PER_DAY = 3;
+// A tender past Analysis carries up to 10 tracked dates, so its name recurs
+// all over the month — which read as duplicated opportunities (Derson,
+// 2026-09-07). The chip now leads with the milestone and the left rail keys
+// the tender, so one glance separates "six dates for one tender" from "six
+// tenders". Hue only ever ADDS the grouping; the tender is still named in
+// text on every chip, so the rail never carries meaning alone (DESIGN.md).
+const TENDER_RAILS = [
+  "border-l-accent",
+  "border-l-warm",
+  "border-l-ok",
+  "border-l-cold",
+  "border-l-hot",
+] as const;
+
+// Index by position in the calendar's own tender list, not by id modulo: ids
+// are sparse, and modulo happily gives two concurrent tenders the same hue.
+function railFor(tenderId: number, order: Map<number, number>): string {
+  return TENDER_RAILS[(order.get(tenderId) ?? 0) % TENDER_RAILS.length];
+}
+
+// Two lines per chip (milestone over tender) roughly doubles chip height,
+// so a day shows two before collapsing into "+N more".
+const MAX_CHIPS_PER_DAY = 2;
 
 export function MonthGrid({
   month,
@@ -84,6 +106,12 @@ export function MonthGrid({
   const weeks = buildWeeks(month);
   const today = localToday();
 
+  // Rail hues are assigned over ALL events, not just this month's, so a
+  // tender keeps the same color as you page from October into November.
+  const tenderOrder = new Map<number, number>();
+  for (const e of events)
+    if (!tenderOrder.has(e.tenderId)) tenderOrder.set(e.tenderId, tenderOrder.size);
+
   const byDate = new Map<string, MilestoneEvent[]>();
   for (const e of events) {
     const list = byDate.get(e.date) ?? [];
@@ -92,6 +120,7 @@ export function MonthGrid({
   }
 
   const inMonthEvents = events.filter((e) => e.date.startsWith(month));
+  const inMonthTenders = new Set(inMonthEvents.map((e) => e.tenderId)).size;
 
   return (
     <div>
@@ -124,7 +153,7 @@ export function MonthGrid({
                 return (
                   <div
                     key={cell.date}
-                    className={`min-h-[5.5rem] border-r border-line/60 p-1.5 last:border-r-0 ${
+                    className={`min-h-[7rem] border-r border-line/60 p-1.5 last:border-r-0 ${
                       !cell.inMonth ? "bg-sunken/40" : weekend ? "bg-sunken/25" : ""
                     }`}
                   >
@@ -152,15 +181,28 @@ export function MonthGrid({
                             title={`${e.label} — ${e.tenderTitle} (${e.date}) · ${
                               e.hot ? "Submission" : e.official ? "Official date" : "Internal date"
                             }`}
-                            className={`block truncate rounded px-1.5 py-0.5 text-xs font-medium hover:opacity-80 ${chipClass(e)}`}
+                            className={`block rounded-sm border-l-2 py-0.5 pl-1.5 pr-1 hover:opacity-80 ${railFor(
+                              e.tenderId,
+                              tenderOrder
+                            )} ${chipClass(e)}`}
                           >
-                            {e.label} · {e.tenderTitle}
+                            <span className="block truncate text-xs font-semibold leading-tight">
+                              {e.label}
+                            </span>
+                            {/* Hierarchy here is size + weight, never opacity:
+                                these sit on tinted surfaces where a faded
+                                token drops under AA (DESIGN.md). */}
+                            <span className="block truncate text-[0.6875rem] font-normal leading-tight">
+                              {e.tenderShort}
+                            </span>
                           </Link>
                         ))}
                         {rest.length > 0 && (
                           <span
                             className="block px-1.5 text-xs text-fg-soft"
-                            title={rest.map((e) => `${e.label} — ${e.tenderTitle}`).join(" · ")}
+                            title={rest
+                              .map((e) => `${e.label} — ${e.tenderTitle}`)
+                              .join("\n")}
                           >
                             +{rest.length} more
                           </span>
@@ -175,10 +217,16 @@ export function MonthGrid({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
+        {/* Says dates AND opportunities: a month of "17 dates" looks like a
+            crowd until you know it is three tenders. */}
         <p className="text-xs text-fg-soft">
           {inMonthEvents.length === 0
             ? "No tracked dates this month."
-            : `${inMonthEvents.length} tracked ${inMonthEvents.length === 1 ? "date" : "dates"} this month.`}
+            : `${inMonthEvents.length} tracked ${
+                inMonthEvents.length === 1 ? "date" : "dates"
+              } across ${inMonthTenders} ${
+                inMonthTenders === 1 ? "opportunity" : "opportunities"
+              } this month.`}
         </p>
         <p className="flex items-center gap-4 text-xs text-fg-soft">
           <span className="flex items-center gap-1.5">
@@ -192,6 +240,10 @@ export function MonthGrid({
           <span className="flex items-center gap-1.5">
             <span className="h-2.5 w-2.5 rounded-sm bg-sunken ring-1 ring-inset ring-line-strong" />
             Internal date
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-3 w-0.5 rounded-full bg-line-strong" />
+            Bar color = same opportunity
           </span>
         </p>
       </div>
