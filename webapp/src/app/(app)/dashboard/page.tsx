@@ -454,7 +454,7 @@ export default async function DashboardPage() {
         <ChartCard title="Open tenders by solution domain">
           <HBarList rows={byDomain} showPct />
         </ChartCard>
-        <ChartCard title="Partner territory — who brokers which buyer">
+        <ChartCard title="Partner territory">
           <NetherlandsMap />
         </ChartCard>
       </div>

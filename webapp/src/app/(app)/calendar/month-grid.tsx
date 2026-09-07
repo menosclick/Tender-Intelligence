@@ -178,7 +178,7 @@ export function MonthGrid({
                           <Link
                             key={`${e.tenderId}-${e.label}-${i}`}
                             href={`/tender/${e.tenderId}`}
-                            title={`${e.label} — ${e.tenderTitle} (${e.date}) · ${
+                            title={`${e.label}: ${e.tenderTitle} (${e.date}) · ${
                               e.hot ? "Submission" : e.official ? "Official date" : "Internal date"
                             }`}
                             className={`block rounded-sm border-l-2 py-0.5 pl-1.5 pr-1 hover:opacity-80 ${railFor(
@@ -201,7 +201,7 @@ export function MonthGrid({
                           <span
                             className="block px-1.5 text-xs text-fg-soft"
                             title={rest
-                              .map((e) => `${e.label} — ${e.tenderTitle}`)
+                              .map((e) => `${e.label}: ${e.tenderTitle}`)
                               .join("\n")}
                           >
                             +{rest.length} more

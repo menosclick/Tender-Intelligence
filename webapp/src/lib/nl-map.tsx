@@ -7,6 +7,7 @@ import {
   contractsInProvince,
   formatValue,
   buyerCount,
+  type BrokerContract,
 } from "./partner-territory";
 
 // Netherlands PARTNER-TERRITORY map — real province geometry (CBS/Kadaster
@@ -85,11 +86,19 @@ export function NetherlandsMap() {
   const brokered = holdersByProvince();
   const held = BROKER_CONTRACTS.filter((c) => c.status === "held");
   const openWindows = BROKER_CONTRACTS.filter((c) => c.status === "open");
+  // Collectives first: one contract covering seven municipalities is a bigger
+  // fact than a single town, and mixing the two made the list read as noise.
+  const collectives = held.filter((c) => c.covers?.length);
+  const singles = held.filter((c) => !c.covers?.length);
   // Holders actually present in the data, in BROKER_HOLDERS order, so the
   // legend never advertises a colour the map does not use.
   const holdersShown = BROKER_HOLDERS.filter((h) =>
     held.some((c) => c.holder === h)
   );
+  // Buyers reached, members included. "10 contracts" undersells Protinus when
+  // three of them are buying groups.
+  const reachOf = (h: string) =>
+    held.filter((c) => c.holder === h).reduce((n, c) => n + buyerCount(c), 0);
 
   return (
     <div>
@@ -99,31 +108,56 @@ export function NetherlandsMap() {
         role="img"
         aria-label={`Map of the Netherlands showing which partner holds the software-broker contract in each province. ${holdersShown.join(", ")} hold contracts across ${brokered.size} provinces.`}
       >
+        <defs>
+          {/* A province split between two partners gets both colours as
+              stripes. Filling with whichever holder happened to be first made
+              the map contradict its own legend: Drenthe rendered as Protinus
+              while SoftwareOne holds the province contract there. */}
+          {[...brokered.entries()]
+            .filter(([, hs]) => hs.length > 1)
+            .map(([province, hs]) => (
+              <pattern
+                key={province}
+                id={`split-${province}`}
+                width="10"
+                height="10"
+                patternUnits="userSpaceOnUse"
+                patternTransform="rotate(45)"
+              >
+                <rect width="10" height="10" fill={HOLDER_COLOR[hs[0]].fill} />
+                <rect width="5" height="10" fill={HOLDER_COLOR[hs[1]].fill} />
+              </pattern>
+            ))}
+        </defs>
         {NL_PROVINCES.map((p) => {
           const holders = brokered.get(p.name) ?? [];
-          // A province can be split between two brokers (Zuid-Holland is:
-          // Protinus in Rotterdam, SoftwareOne in Den Haag). Fill with the
-          // first holder and say so in the tooltip rather than pretending
-          // one partner owns the whole province.
-          const primary = holders[0];
-          const colour = primary ? HOLDER_COLOR[primary] : null;
+          const split = holders.length > 1;
+          const colour = holders[0] ? HOLDER_COLOR[holders[0]] : null;
           const contracts = contractsInProvince(p.name);
+          // Naming the member municipalities is the whole point of hovering:
+          // "+7" on screen said nothing about which seven.
           const tip = contracts.length
-            ? `${p.name} — ${contracts
+            ? `${p.name}: ${contracts
                 .map(
                   (c) =>
-                    `${c.buyer}: ${c.holder} (${formatValue(c)}${
+                    `${c.buyer} (${c.holder}, ${formatValue(c)}${
                       c.endsBy ? `, to ${c.endsBy}` : ""
-                    })${c.covers ? ` — covers ${buyerCount(c)} buyers` : ""}`
+                    })${c.covers ? ` covering ${c.covers.join(", ")}` : ""}`
                 )
                 .join(" | ")}`
-            : `${p.name} — no broker contract on file`;
+            : `${p.name}: no broker contract on file`;
           return (
             <g key={p.name}>
               <title>{tip}</title>
               <path
                 d={p.d}
-                fill={colour ? colour.fill : "var(--color-sunken)"}
+                fill={
+                  split
+                    ? `url(#split-${p.name})`
+                    : colour
+                      ? colour.fill
+                      : "var(--color-sunken)"
+                }
                 stroke={colour ? colour.stroke : "var(--color-surface)"}
                 strokeWidth="1.5"
                 strokeLinejoin="round"
@@ -135,76 +169,129 @@ export function NetherlandsMap() {
 
       {/* Legend: swatch + the holder's name, never colour alone. */}
       <ul className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
-        {holdersShown.map((h) => {
-          const n = held.filter((c) => c.holder === h).length;
-          return (
-            <li key={h} className="flex items-center gap-1.5">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-sm"
-                style={{
-                  backgroundColor: HOLDER_COLOR[h].fill,
-                  outline: `1px solid ${HOLDER_COLOR[h].stroke}`,
-                }}
-              />
-              <span className="font-medium text-fg">{h}</span>
-              <span className="tabular-nums text-fg-soft">{n}</span>
-            </li>
-          );
-        })}
+        {holdersShown.map((h) => (
+          <li key={h} className="flex items-center gap-1.5">
+            <span
+              className="h-2.5 w-2.5 shrink-0 rounded-sm"
+              style={{
+                backgroundColor: HOLDER_COLOR[h].fill,
+                outline: `1px solid ${HOLDER_COLOR[h].stroke}`,
+              }}
+            />
+            <span className="font-medium text-fg">{h}</span>
+            {/* Buyers reached, not contracts held: a bare count made the two
+                partners look closer than they are. */}
+            <span className="tabular-nums text-fg-soft">{reachOf(h)} buyers</span>
+          </li>
+        ))}
         <li className="flex items-center gap-1.5">
           <span className="h-2.5 w-2.5 shrink-0 rounded-sm bg-sunken outline outline-1 outline-line-strong" />
           <span className="text-fg-soft">no contract on file</span>
         </li>
       </ul>
 
-      {/* Held contracts, biggest coverage first — a collective covering seven
-          municipalities matters more than a single town. */}
-      <ul className="mt-3 space-y-1.5">
-        {held
-          .slice()
-          .sort((a, b) => buyerCount(b) - buyerCount(a))
-          .map((c) => (
-            <li key={c.buyer} className="flex items-baseline justify-between gap-3 text-xs">
-              <span className="min-w-0 truncate">
-                <span className="font-medium text-fg">{c.buyer}</span>
-                {c.covers && (
-                  <span className="text-fg-soft"> +{c.covers.length}</span>
-                )}{" "}
-                <span style={{ color: HOLDER_COLOR[c.holder].text }}>{c.holder}</span>
-              </span>
-              <span className="shrink-0 tabular-nums text-fg-soft">
-                {formatValue(c)}
-                {c.endsBy ? ` · to ${c.endsBy}` : ""}
-              </span>
-            </li>
-          ))}
-      </ul>
+      <ContractGroup
+        heading="Buying groups"
+        note="one contract, many municipalities"
+        rows={collectives}
+      />
+      <ContractGroup heading="Single buyers" rows={singles} />
 
       {openWindows.length > 0 && (
-        <div className="mt-3 rounded-lg bg-ok-soft px-2.5 py-2">
+        <div className="mt-4 rounded-lg bg-ok-soft px-2.5 py-2">
           <p className="text-xs font-semibold text-ok">
-            No broker appointed yet — {openWindows.length} open
+            No broker appointed yet ({openWindows.length})
           </p>
-          <ul className="mt-1 space-y-0.5">
+          <ul className="mt-1.5 space-y-1">
             {openWindows.map((c) => (
-              <li key={c.buyer} className="text-xs text-fg-mid">
-                <span className="font-medium text-fg">{c.buyer}</span>
-                {c.covers && <span className="text-fg-soft"> +{c.covers.length}</span>}
-                {c.closes ? ` — bids close ${c.closes}` : " — no close date published"}
+              <li
+                key={c.buyer}
+                className="flex items-baseline justify-between gap-3 text-xs"
+                title={
+                  c.covers
+                    ? `${c.buyer} buys for ${c.covers.join(", ")}. ${c.term}.`
+                    : `${c.buyer}. ${c.term}.`
+                }
+              >
+                <span className="min-w-0 truncate">
+                  <span className="font-medium text-fg">{c.buyer}</span>
+                  {c.covers && (
+                    <span className="text-fg-soft"> +{c.covers.length} more</span>
+                  )}
+                </span>
+                <span className="shrink-0 tabular-nums text-fg-mid">
+                  {c.closes ? `closes ${c.closes}` : "no close date"}
+                </span>
               </li>
             ))}
           </ul>
         </div>
       )}
 
-      <p className="mt-2 text-xs leading-relaxed text-fg-soft">
+      <p className="mt-3 text-xs leading-relaxed text-fg-soft">
         Where a buyer appoints a single-source software broker, licences route
-        through that partner rather than direct. Hand-curated from public award
-        notices, not scraped — a buyer missing here means no contract is on
-        file, not that it buys direct. Some rows are older awards that may have
-        been re-tendered; each carries its source and caveat in
-        <code className="mx-1">partner-territory.ts</code>.
+        through that partner rather than direct. Hover any row or province for
+        the contract detail.
       </p>
+    </div>
+  );
+}
+
+// One block of contracts. Hovering a row names the member municipalities,
+// which is what a bare "+7" left unanswered on screen (Derson, 2026-09-07),
+// along with the term and any caveat on the row.
+function ContractGroup({
+  heading,
+  note,
+  rows,
+}: {
+  heading: string;
+  note?: string;
+  rows: BrokerContract[];
+}) {
+  if (rows.length === 0) return null;
+  return (
+    <div className="mt-4">
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-fg-mid">
+        {heading}
+        {note && (
+          <span className="ml-1.5 font-normal normal-case tracking-normal text-fg-soft">
+            {note}
+          </span>
+        )}
+      </h4>
+      <ul className="mt-1.5 space-y-1">
+        {rows
+          .slice()
+          .sort((a, b) => buyerCount(b) - buyerCount(a))
+          .map((c) => (
+            <li
+              key={c.buyer}
+              className="flex items-baseline justify-between gap-3 text-xs"
+              title={
+                (c.covers
+                  ? `${c.buyer} buys for ${buyerCount(c)} bodies: ${c.covers.join(", ")}. `
+                  : `${c.buyer}. `) +
+                `Broker: ${c.holder}. ${c.term}.` +
+                (c.unverified ? ` Caveat: ${c.unverified}.` : "")
+              }
+            >
+              <span className="min-w-0 truncate">
+                <span className="font-medium text-fg">{c.buyer}</span>
+                {c.covers && (
+                  <span className="text-fg-soft"> +{c.covers.length} more</span>
+                )}
+                <span className="text-fg-soft"> · </span>
+                <span style={{ color: HOLDER_COLOR[c.holder].text }}>{c.holder}</span>
+              </span>
+              <span className="shrink-0 tabular-nums text-fg-soft">
+                {c.valueEur !== null && formatValue(c)}
+                {c.valueEur !== null && c.endsBy ? " · " : ""}
+                {c.endsBy ? `to ${c.endsBy}` : ""}
+              </span>
+            </li>
+          ))}
+      </ul>
     </div>
   );
 }

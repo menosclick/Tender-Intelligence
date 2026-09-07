@@ -130,7 +130,7 @@ export default async function InboxPage({
   // under it described different sets.
   const subtitle = `${rows.length} tender${rows.length === 1 ? "" : "s"} shown${
     filtersActive ? " (filtered)" : ""
-  }${hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""} — qualify them into the pipeline or hide them.`;
+  }${hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""}. Qualify them into the pipeline or hide them.`;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -248,7 +248,7 @@ export default async function InboxPage({
                     <form action={recordFeedback.bind(null, t.id, "relevance", "not_relevant")}>
                       <button
                         className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-hot"
-                        title="Hide as not relevant — teaches the scoring loop"
+                        title="Hide as not relevant. Teaches the scoring loop."
                       >
                         Hide
                       </button>

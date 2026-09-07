@@ -769,3 +769,46 @@ source file rather than presented as current fact. Drechtsteden was a
 co-winner award, so a second broker holds part of it. Coverage is trade-press
 based and not exhaustive: a buyer absent from the file means "no contract on
 file", never "buys direct", and the UI says exactly that.
+
+---
+
+## 2026-09-07 (6) — Partner territory panel: readability pass from Derson's screenshot
+
+Derson sent a screenshot: the list read as disordered, "Drechtsteden +7 Protinus
+IT" said nothing about WHICH seven, some footer text did not belong, the card
+title was too long, and em-dashes had to go.
+
+**A bug the screenshot exposed that was not in the brief.** The legend claimed
+SoftwareOne held 4 contracts, but only two areas rendered orange. A province
+with two brokers was filled with whichever holder came first, so Drenthe
+rendered as Protinus while SoftwareOne holds the province contract there. The
+map contradicted its own legend. Split provinces (Zuid-Holland, Drenthe) now
+render as diagonal stripes of both partners' colours.
+
+**Fixed as asked.**
+- **Grouped the list.** "Buying groups" (one contract, many municipalities)
+  above "Single buyers". Mixing a 7-municipality collective with a single town
+  in one flat list is what made it read as noise.
+- **Tooltips name the members.** Hovering Drechtsteden now reads "Drechtsteden
+  buys for 8 bodies: Alblasserdam, Dordrecht, Hardinxveld-Giessendam,
+  Hendrik-Ido-Ambacht, Papendrecht, Sliedrecht, Zwijndrecht. Broker: Protinus
+  IT..." plus the term and any caveat. Province tooltips list them too.
+  On-screen the count now reads "+7 more" rather than a bare "+7".
+- **Cut the footer to one sentence.** The provenance paragraph (hand-curated,
+  not scraped, caveats live in the source file) was documentation, not
+  dashboard copy: it is already the file's header comment. What remains tells
+  the reader what the panel means and that hovering gives detail.
+- **Title is now "Partner territory".**
+- **Em-dashes gone from all rendered text**, here and in the inbox subtitle,
+  the not-relevant tooltip and the calendar chip tooltips from earlier today.
+  Source comments keep theirs.
+
+**One improvement not asked for, flagged.** The legend counted contracts, so
+"Protinus 10 / SoftwareOne 4" hid the real gap. It now counts buyers reached
+with collective members included: **Protinus 30, SoftwareOne 4**. That is the
+number that matters when the question is who covers the territory.
+
+**Verified by rendering the component:** zero em-dashes in output, both split
+provinces striped and referencing their pattern, both group headings present,
+every collective's member list appearing in the markup, and the legend showing
+30/4.

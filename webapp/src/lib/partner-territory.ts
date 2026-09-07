@@ -110,7 +110,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     endsBy: null,
     status: "held",
     source: "https://www.computable.nl/2022/03/18/protinus-it-softwarebroker-voor-inkoopkracht-zhw/",
-    unverified: "awarded 2022; may have been re-tendered since — treat the end date as unknown",
+    unverified: "awarded 2022; may have been re-tendered since, so the end date is unknown",
   },
   {
     buyer: "Drechtsteden",
@@ -262,7 +262,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     endsBy: null,
     status: "held",
     source: "https://www.softwareone.com/nl-nl/nieuwsberichten/2022/02/11/softwareone-wint-aanbesteding-zuidoost-brabant",
-    unverified: "awarded 2022 — likely re-tendered by now; treat as stale",
+    unverified: "awarded 2022 and likely re-tendered by now; treat as stale",
   },
   {
     buyer: "Stichtse Vecht",
@@ -274,7 +274,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     endsBy: null,
     status: "held",
     source: "https://nl.openprocurements.com/supplier/protinus-it/",
-    unverified: "listed 2021 — may have lapsed or been re-tendered; treat as stale",
+    unverified: "listed 2021; may have lapsed or been re-tendered, so treat as stale",
   },
   {
     buyer: "Noaberkracht",
@@ -287,7 +287,7 @@ export const BROKER_CONTRACTS: BrokerContract[] = [
     endsBy: null,
     status: "held",
     source: "https://nl.openprocurements.com/supplier/protinus-it/",
-    unverified: "listed 2020 — may have lapsed or been re-tendered; treat as stale",
+    unverified: "listed 2020; may have lapsed or been re-tendered, so treat as stale",
   },
 
   // ---- Open: nobody holds these yet. This is where CBA can still move. -----
