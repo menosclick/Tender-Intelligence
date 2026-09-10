@@ -21,6 +21,55 @@ export function daysUntil(dateStr: string | null): number | null {
   return Math.round((deadline - today) / 86400000);
 }
 
+// TenderNed publication types. A Marktconsultatie (MAC) or Vooraankondiging
+// (VAK) is NOT a biddable tender: the buyer is still deciding what to buy, so
+// there is nothing to submit yet. Those are the highest-value moments to reach
+// a buyer — requirements are still open — but treating them as bids puts a
+// "Pursue immediately" next to something that cannot be bid, so they carry
+// their own vocabulary everywhere they appear.
+export type PublicatieType = "AAO" | "MAC" | "VAK";
+
+export const EARLY_SIGNAL_TYPES = ["MAC", "VAK"] as const;
+
+export function isEarlySignal(t: string | null | undefined): boolean {
+  return t === "MAC" || t === "VAK";
+}
+
+// Short label for the row chip.
+export const PUB_TYPE_LABEL: Record<string, string> = {
+  AAO: "Tender",
+  MAC: "Consultation",
+  VAK: "Pre-announcement",
+};
+
+// What the reader can actually DO about it — the thing the label alone
+// doesn't say. Used as the chip's title so it explains itself on hover.
+export const PUB_TYPE_MEANING: Record<string, string> = {
+  AAO: "Live tender (Aankondiging opdracht). Biddable now, deadline applies.",
+  MAC: "Market consultation (Marktconsultatie). Not biddable yet — the buyer is exploring options and shaping requirements. This is the moment to influence the spec.",
+  VAK: "Pre-announcement (Vooraankondiging). The buyer has signalled intent to tender but has not published one yet.",
+};
+
+export function pubTypeLabel(t: string | null | undefined) {
+  return PUB_TYPE_LABEL[t ?? ""] ?? "Tender";
+}
+
+export function pubTypeMeaning(t: string | null | undefined) {
+  return PUB_TYPE_MEANING[t ?? ""] ?? PUB_TYPE_MEANING.AAO;
+}
+
+// Deliberately not the Hot/Warm/Cold palette: those encode how good a tender
+// is, and this encodes what KIND of thing it is. Reusing them would say a
+// consultation is hot.
+export const PUB_TYPE_CHIP: Record<string, string> = {
+  MAC: "bg-accent-soft text-accent-fg",
+  VAK: "bg-sunken text-fg-mid",
+};
+
+export function pubTypeChip(t: string | null | undefined) {
+  return PUB_TYPE_CHIP[t ?? ""] ?? "bg-sunken text-fg-mid";
+}
+
 export const LABEL_CHIP: Record<string, string> = {
   Hot: "bg-hot-soft text-hot",
   Warm: "bg-warm-soft text-warm",
@@ -105,8 +154,15 @@ export function scoreTier(val: number, max: number): string {
   return "weak";
 }
 
-export function deadlineText(deadline: string | null, days: number | null) {
-  if (!deadline) return "—";
+export function deadlineText(
+  deadline: string | null,
+  days: number | null,
+  pubType?: string | null
+) {
+  // An early signal has no bid deadline. Its date is "respond to the
+  // consultation by", and when TenderNed publishes none there is genuinely no
+  // date to show — "—" would read as missing data rather than as normal.
+  if (!deadline) return isEarlySignal(pubType) ? "no deadline" : "—";
   if (days === null) return deadline;
   if (days < 0) return `${deadline} (closed)`;
   // Beyond a year it's a framework/DAS-style window, not a bid-by date —

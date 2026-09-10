@@ -18,6 +18,7 @@ export type FilterOption = { value: string; label: string };
 
 export function InboxFilters({
   q,
+  kind,
   label,
   domain,
   buyer,
@@ -28,6 +29,7 @@ export function InboxFilters({
   filtersActive,
 }: {
   q: string;
+  kind: string;
   label: string;
   domain: string;
   buyer: string;
@@ -69,6 +71,18 @@ export function InboxFilters({
         aria-label="Search"
         className={`${selectCls} min-w-44 flex-1`}
       />
+      <select
+        name="kind"
+        defaultValue={kind}
+        onChange={(e) => navigate(e.currentTarget.form!)}
+        className={selectCls}
+        aria-label="Publication kind"
+        title="Live tenders can be bid on now. Early signals are market consultations and pre-announcements — not biddable yet, but the moment to shape the requirements."
+      >
+        <option value="tenders">Live tenders</option>
+        <option value="early">Early signals</option>
+        <option value="all">Tenders + early signals</option>
+      </select>
       <select
         name="label"
         defaultValue={label}

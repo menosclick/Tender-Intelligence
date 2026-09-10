@@ -1,4 +1,11 @@
-import { labelChip, labelDot } from "./format";
+import {
+  labelChip,
+  labelDot,
+  isEarlySignal,
+  pubTypeChip,
+  pubTypeLabel,
+  pubTypeMeaning,
+} from "./format";
 
 // One visual vocabulary for tender labels everywhere a tender appears.
 export function LabelChip({
@@ -15,6 +22,23 @@ export function LabelChip({
       <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${labelDot(label)}`} />
       {label ?? "unscored"}
       {score != null && <span className="tabular-nums">{score}</span>}
+    </span>
+  );
+}
+
+// Marks what KIND of publication a row is. Renders nothing for a normal live
+// tender: every row carrying a badge is the same as no row carrying one, and
+// the point here is that a consultation stands out from the tenders around it.
+export function PubTypeChip({ pubType }: { pubType: string | null }) {
+  if (!isEarlySignal(pubType)) return null;
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center rounded px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wide ${pubTypeChip(
+        pubType
+      )}`}
+      title={pubTypeMeaning(pubType)}
+    >
+      {pubTypeLabel(pubType)}
     </span>
   );
 }

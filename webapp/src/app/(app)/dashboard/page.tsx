@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, stageLabel, asArray } from "@/lib/format";
+import { deadlineText, deadlineClass, stageLabel, asArray, isEarlySignal } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
-import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
+import { LabelChip, PageHeader, PubTypeChip, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList } from "@/lib/viz";
 import { addAction, setActionStatus, deleteAction } from "@/lib/actions";
 import { getMilestoneEvents } from "@/lib/calendar-data";
@@ -34,6 +34,7 @@ type Row = {
   days_to_deadline: number | null;
   pipeline_stage: string | null;
   recommended_products: unknown;
+  publicatie_type: string | null;
 };
 
 // inputCls minus w-full: compact inline controls for the one-row add form.
@@ -52,7 +53,7 @@ export default async function DashboardPage() {
       admin
         .from("v_app_tenders")
         .select(
-          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products"
+          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type"
         )
         // A tender with no published deadline is still open — the pipeline's own
         // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -79,7 +80,16 @@ export default async function DashboardPage() {
       .filter((f) => f.kind === "outcome" && (f.value === "no_bid" || f.value === "lost"))
       .map((f) => f.tender_id)
   );
-  const openRows = ((open ?? []) as Row[]).filter((t) => !notRelevantIds.has(t.id));
+  const allRows = ((open ?? []) as Row[]).filter((t) => !notRelevantIds.has(t.id));
+  // Market consultations and pre-announcements are not biddable, so they must
+  // not land in the KPIs, the deadline panels or "Latest qualified" — those
+  // all answer "what bid work is live". They get their own strip below.
+  const openRows = allRows.filter((t) => !isEarlySignal(t.publicatie_type));
+  const earlySignals = allRows
+    .filter((t) => isEarlySignal(t.publicatie_type))
+    .filter((t) => t.label === "Hot" || t.label === "Warm")
+    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .slice(0, 5);
   const qualified = openRows.filter((t) => t.label === "Hot" || t.label === "Warm");
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
   // Exclusion form: a stray legacy stage value must count as active, not vanish.
@@ -458,6 +468,77 @@ export default async function DashboardPage() {
           <NetherlandsMap />
         </ChartCard>
       </div>
+
+      {/* Early signals — buyers consulting the market. Deliberately ABOVE
+          "Latest qualified": by the time a tender is published the
+          requirements are already written, so this is the panel where CBA can
+          still change the outcome. Only rendered when there are any, so it
+          never occupies the command centre with an empty table. */}
+      {earlySignals.length > 0 && (
+        <>
+          <div className="mt-8 flex items-baseline justify-between">
+            <h2 className="text-base font-semibold text-fg">
+              Early signals — buyers consulting the market
+            </h2>
+            <Link
+              href="/inbox?kind=early&label=all"
+              className="text-xs font-medium text-accent-fg hover:underline"
+            >
+              View all early signals →
+            </Link>
+          </div>
+          <p className="mt-1 text-sm text-fg-mid">
+            Not biddable yet. The buyer is exploring options and shaping
+            requirements — this is the moment to reach them.
+          </p>
+          <div className="mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
+            <table className="w-full min-w-[44rem] text-sm">
+              <thead>
+                <tr className={`border-b border-line text-left ${microLabel}`}>
+                  <th className="px-4 py-2.5">Publication</th>
+                  <th className="px-4 py-2.5">Buyer</th>
+                  <th className="px-4 py-2.5">Kind</th>
+                  <th className="px-4 py-2.5">Match</th>
+                  <th className="px-4 py-2.5">Respond by</th>
+                </tr>
+              </thead>
+              <tbody>
+                {earlySignals.map((t) => (
+                  <tr
+                    key={t.id}
+                    className="border-b border-line/60 transition-colors duration-150 last:border-0 hover:bg-sunken/60"
+                  >
+                    <td className="max-w-sm px-4 py-3">
+                      <Link
+                        href={`/tender/${t.id}`}
+                        className="block truncate font-medium text-fg hover:text-accent-fg hover:underline"
+                        title={t.title ?? ""}
+                      >
+                        {t.title}
+                      </Link>
+                    </td>
+                    <td
+                      className="max-w-[12rem] truncate px-4 py-3 text-fg-mid"
+                      title={t.buyer ?? ""}
+                    >
+                      {t.buyer}
+                    </td>
+                    <td className="px-4 py-3">
+                      <PubTypeChip pubType={t.publicatie_type} />
+                    </td>
+                    <td className="px-4 py-3">
+                      <LabelChip label={t.label} />
+                    </td>
+                    <td className="px-4 py-3 tabular-nums text-fg-mid">
+                      {deadlineText(t.deadline, t.days_to_deadline, t.publicatie_type)}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
 
       {/* Latest qualified — the five newest Hot/Warm, full list in the Inbox. */}
       <div className="mt-8 flex items-baseline justify-between">

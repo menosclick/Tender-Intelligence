@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, stageLabel, asArray } from "@/lib/format";
+import { deadlineText, deadlineClass, stageLabel, asArray, isEarlySignal } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
-import { LabelChip, PageHeader, btnSecondary, microLabel } from "@/lib/ui";
+import { LabelChip, PageHeader, PubTypeChip, btnSecondary, microLabel } from "@/lib/ui";
 import { addToBoard, recordFeedback } from "@/lib/actions";
 import { InboxFilters } from "./filters";
 import { brokerFor } from "@/lib/partner-territory";
@@ -25,6 +25,7 @@ type Row = {
   days_to_deadline: number | null;
   pipeline_stage: string | null;
   recommended_products: unknown;
+  publicatie_type: string | null;
 };
 
 const DUE_BUCKETS = [
@@ -50,6 +51,12 @@ export default async function InboxPage({
   const buyerParam = first(params.buyer);
   const domainParam = first(params.domain);
   const due = DUE_BUCKETS.some((b) => b.key === first(params.due)) ? first(params.due) : "";
+  // What KIND of publication to show. Consultations and pre-announcements are
+  // not biddable, so they are opt-in rather than mixed into the bid list by
+  // default: "tenders" keeps this screen the daily pursue/hide loop it is.
+  const KINDS = ["tenders", "early", "all"];
+  let kind = first(params.kind) || "tenders";
+  if (!KINDS.includes(kind)) kind = "tenders";
 
   const admin = createSupabaseAdmin();
   const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
@@ -57,7 +64,7 @@ export default async function InboxPage({
   let query = admin
     .from("v_app_tenders")
     .select(
-      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products"
+      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type"
     )
     // A tender with no published deadline is still open — the pipeline's own
     // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -115,6 +122,8 @@ export default async function InboxPage({
   let rows = visible;
   if (label === "warmplus") rows = rows.filter((t) => t.label === "Hot" || t.label === "Warm");
   else if (label !== "all") rows = rows.filter((t) => t.label === label);
+  if (kind === "tenders") rows = rows.filter((t) => !isEarlySignal(t.publicatie_type));
+  else if (kind === "early") rows = rows.filter((t) => isEarlySignal(t.publicatie_type));
   if (buyer) rows = rows.filter((t) => (t.buyer_type ?? "unknown") === buyer);
   if (domain) rows = rows.filter((t) => domainOf(t) === domain);
   if (due) {
@@ -123,14 +132,23 @@ export default async function InboxPage({
       rows = rows.filter((t) => t.days_to_deadline !== null && bucket.test(t.days_to_deadline));
   }
 
-  const filtersActive = label !== "warmplus" || buyer !== "" || domain !== "" || due !== "" || q !== "";
+  const filtersActive =
+    label !== "warmplus" || buyer !== "" || domain !== "" || due !== "" || q !== "" || kind !== "tenders";
 
   // Describes what the table below actually shows. The old count spanned all
   // labels and moved whenever a search was typed, so the header and the rows
   // under it described different sets.
-  const subtitle = `${rows.length} tender${rows.length === 1 ? "" : "s"} shown${
+  // Say which of the two things is on screen. A consultation cannot be
+  // "qualified into the pipeline", so the instruction changes with the view.
+  const noun =
+    kind === "early" ? "early signal" : kind === "all" ? "publication" : "tender";
+  const action =
+    kind === "early"
+      ? "The buyer is still shaping requirements — reach them before the tender is written."
+      : "Qualify them into the pipeline or hide them.";
+  const subtitle = `${rows.length} ${noun}${rows.length === 1 ? "" : "s"} shown${
     filtersActive ? " (filtered)" : ""
-  }${hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""}. Qualify them into the pipeline or hide them.`;
+  }${hiddenCount > 0 ? ` · ${hiddenCount} hidden as not relevant` : ""}. ${action}`;
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -146,6 +164,7 @@ export default async function InboxPage({
 
       <InboxFilters
         q={q}
+        kind={kind}
         label={label}
         domain={domain}
         buyer={buyer}
@@ -190,6 +209,7 @@ export default async function InboxPage({
                     >
                       {t.title}
                     </Link>
+                    <PubTypeChip pubType={t.publicatie_type} />
                     {freshIds.has(t.id) && (
                       <span className="shrink-0 rounded-full bg-accent-soft px-1.5 py-0.5 text-xs font-semibold uppercase tracking-wider text-accent-fg">
                         New
@@ -240,7 +260,7 @@ export default async function InboxPage({
                   <LabelChip label={t.label} score={t.score} />
                 </td>
                 <td className={`px-4 py-3 tabular-nums ${deadlineClass(t.days_to_deadline)}`}>
-                  {deadlineText(t.deadline, t.days_to_deadline)}
+                  {deadlineText(t.deadline, t.days_to_deadline, t.publicatie_type)}
                 </td>
                 <td className="px-4 py-3 text-xs text-fg-soft">
                   {t.pipeline_stage ? stageLabel(t.pipeline_stage) : "—"}
@@ -272,9 +292,11 @@ export default async function InboxPage({
             {rows.length === 0 && (
               <tr>
                 <td colSpan={6} className="px-4 py-12 text-center text-sm text-fg-soft">
-                  {filtersActive
-                    ? "No open tenders match these filters."
-                    : "No open Warm+ tenders right now. The scraper runs daily at 09:00."}
+                  {kind === "early"
+                    ? "No open market consultations or pre-announcements right now. The scraper picks them up daily at 09:00."
+                    : filtersActive
+                      ? "No open tenders match these filters."
+                      : "No open Warm+ tenders right now. The scraper runs daily at 09:00."}
                 </td>
               </tr>
             )}
