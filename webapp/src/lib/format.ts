@@ -46,7 +46,7 @@ export const PUB_TYPE_LABEL: Record<string, string> = {
 // doesn't say. Used as the chip's title so it explains itself on hover.
 export const PUB_TYPE_MEANING: Record<string, string> = {
   AAO: "Live tender (Aankondiging opdracht). Biddable now, deadline applies.",
-  MAC: "Market consultation (Marktconsultatie). Not biddable yet — the buyer is exploring options and shaping requirements. This is the moment to influence the spec.",
+  MAC: "Market consultation (Marktconsultatie). Not biddable yet. The buyer is exploring options for a potential RFP, so this is the moment to influence the spec.",
   VAK: "Pre-announcement (Vooraankondiging). The buyer has signalled intent to tender but has not published one yet.",
 };
 

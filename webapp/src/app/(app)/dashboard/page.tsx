@@ -484,7 +484,7 @@ export default async function DashboardPage() {
         </ChartCard>
       </div>
 
-      {/* Early signals — buyers consulting the market. Deliberately ABOVE
+      {/* Early signals: buyers consulting the market. Deliberately ABOVE
           "Latest qualified": by the time a tender is published the
           requirements are already written, so this is the panel where CBA can
           still change the outcome. Only rendered when there are any, so it
@@ -492,9 +492,7 @@ export default async function DashboardPage() {
       {earlySignals.length > 0 && (
         <>
           <div className="mt-8 flex items-baseline justify-between">
-            <h2 className="text-base font-semibold text-fg">
-              Early signals — buyers consulting the market
-            </h2>
+            <h2 className="text-base font-semibold text-fg">Early signals</h2>
             <Link
               href="/inbox?kind=early&label=all"
               className="text-xs font-medium text-accent-fg hover:underline"
@@ -503,8 +501,7 @@ export default async function DashboardPage() {
             </Link>
           </div>
           <p className="mt-1 text-sm text-fg-mid">
-            Not biddable yet. The buyer is exploring options and shaping
-            requirements — this is the moment to reach them.
+            Not biddable yet. The buyer is exploring options for a potential RFP.
           </p>
           <div className="mt-2.5 overflow-x-auto rounded-xl border border-line bg-surface">
             <table className="w-full min-w-[44rem] text-sm">

@@ -77,7 +77,7 @@ export function InboxFilters({
         onChange={(e) => navigate(e.currentTarget.form!)}
         className={selectCls}
         aria-label="Publication kind"
-        title="Live tenders can be bid on now. Early signals are market consultations and pre-announcements — not biddable yet, but the moment to shape the requirements."
+        title="Live tenders can be bid on now. Early signals are market consultations and pre-announcements: not biddable yet, the buyer is exploring options for a potential RFP."
       >
         <option value="tenders">Live tenders</option>
         <option value="early">Early signals</option>

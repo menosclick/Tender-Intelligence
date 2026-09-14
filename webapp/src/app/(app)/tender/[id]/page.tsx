@@ -163,7 +163,7 @@ export default async function TenderDetailPage({
               score; an empty numeral reads as a loading failure. */}
           <p
             className="text-3xl font-semibold tabular-nums leading-none"
-            title={t.score == null ? "Not AI-scored — registered manually" : undefined}
+            title={t.score == null ? "Not AI-scored: registered manually" : undefined}
           >
             {t.score ?? "—"}
           </p>
