@@ -101,6 +101,53 @@ export async function setEarlyStage(tenderId: number, formData: FormData) {
   revalidatePath(`/tender/${tenderId}`);
 }
 
+/**
+ * Reclassify a publication as an early signal, or back to a live tender.
+ *
+ * TenderNed's publicatie_type stays untouched — it is the scraper's fact, and
+ * the app never writes it. This records Derson's judgement alongside it, which
+ * the app then follows. Two real cases: a consultation published as AAO, and a
+ * consultation he moved onto the board by mistake and wants back.
+ *
+ * Moving something to early also retires its board card, since an early signal
+ * has no bid to track.
+ */
+export async function setIsEarlySignal(tenderId: number, isEarly: boolean) {
+  await requireUser();
+  const admin = createSupabaseAdmin();
+  // Keep whatever state it already had: moving a consultation back and forth
+  // must not silently rewind "questions sent" to "new".
+  const { data: existing } = await admin
+    .from("early_signal_pipeline")
+    .select("stage")
+    .eq("tender_id", tenderId)
+    .maybeSingle();
+  const { error } = await admin.from("early_signal_pipeline").upsert(
+    {
+      tender_id: tenderId,
+      is_early_override: isEarly,
+      stage: existing?.stage ?? "new",
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "tender_id", ignoreDuplicates: false }
+  );
+  if (error) throw new Error(error.message);
+
+  if (isEarly) {
+    const { error: delErr } = await admin
+      .from("bid_pipeline")
+      .delete()
+      .eq("tender_id", tenderId);
+    if (delErr) throw new Error(delErr.message);
+  }
+
+  revalidatePath("/inbox");
+  revalidatePath("/dashboard");
+  revalidatePath("/board");
+  revalidatePath("/calendar");
+  revalidatePath(`/tender/${tenderId}`);
+}
+
 export async function moveCard(cardId: number, stage: BoardStage) {
   const user = await requireUser();
   if (!BOARD_STAGES.includes(stage)) throw new Error("Invalid stage");

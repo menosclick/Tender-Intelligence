@@ -5,7 +5,6 @@ import {
   deadlineClass,
   stageLabel,
   asArray,
-  isEarlySignal,
   isEarlyActive,
   EARLY_STAGES,
   EARLY_STAGE_LABEL,
@@ -15,7 +14,12 @@ import {
 } from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, PubTypeChip, btnSecondary, microLabel } from "@/lib/ui";
-import { addToBoard, recordFeedback, setEarlyStage } from "@/lib/actions";
+import {
+  addToBoard,
+  recordFeedback,
+  setEarlyStage,
+  setIsEarlySignal,
+} from "@/lib/actions";
 import { InboxFilters } from "./filters";
 import { brokerFor } from "@/lib/partner-territory";
 
@@ -39,6 +43,7 @@ type Row = {
   recommended_products: unknown;
   publicatie_type: string | null;
   early_stage: string | null;
+  is_early: boolean | null;
 };
 
 const DUE_BUCKETS = [
@@ -77,7 +82,7 @@ export default async function InboxPage({
   let query = admin
     .from("v_app_tenders")
     .select(
-      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage"
+      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage,is_early"
     )
     // A tender with no published deadline is still open — the pipeline's own
     // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -134,12 +139,12 @@ export default async function InboxPage({
   let rows = visible;
   if (label === "warmplus") rows = rows.filter((t) => t.label === "Hot" || t.label === "Warm");
   else if (label !== "all") rows = rows.filter((t) => t.label === label);
-  if (kind === "tenders") rows = rows.filter((t) => !isEarlySignal(t.publicatie_type));
+  if (kind === "tenders") rows = rows.filter((t) => !t.is_early);
   else if (kind === "early") {
     // A consultation Derson has dropped is a decision already made, so it
     // leaves the working list the same way a hidden tender does.
     rows = rows.filter(
-      (t) => isEarlySignal(t.publicatie_type) && t.early_stage !== "dropped"
+      (t) => t.is_early && t.early_stage !== "dropped"
     );
     // The ones being worked come first: this tab is the follow-up list.
     rows = [...rows].sort(
@@ -166,7 +171,7 @@ export default async function InboxPage({
     kind === "early" ? "early signal" : kind === "all" ? "publication" : "tender";
   const action =
     kind === "early"
-      ? "The buyer is still shaping requirements — reach them before the tender is written."
+      ? "Not biddable yet. The buyer is exploring options for a potential RFP."
       : "Qualify them into the pipeline or hide them.";
   const subtitle = `${rows.length} ${noun}${rows.length === 1 ? "" : "s"} shown${
     filtersActive ? " (filtered)" : ""
@@ -285,7 +290,7 @@ export default async function InboxPage({
                   {deadlineText(t.deadline, t.days_to_deadline, t.publicatie_type)}
                 </td>
                 <td className="px-4 py-3 text-xs text-fg-soft">
-                  {isEarlySignal(t.publicatie_type) ? (
+                  {t.is_early ? (
                     <span
                       className={`inline-flex rounded px-1.5 py-0.5 font-medium ${earlyStageChip(
                         t.early_stage
@@ -309,7 +314,7 @@ export default async function InboxPage({
                         card — it moves along its own states and stays in this
                         tab. The real RFP, when it comes, is a separate AAO row
                         and that one goes to the pipeline. */}
-                    {isEarlySignal(t.publicatie_type) ? (
+                    {t.is_early ? (
                       <form action={setEarlyStage.bind(null, t.id)}>
                         <select
                           name="stage"
@@ -339,6 +344,22 @@ export default async function InboxPage({
                         </form>
                       )
                     )}
+                    {/* TenderNed's publication type is usually right, but not
+                        always, and a tender can also be moved into the wrong
+                        lane by hand. This is the correction: it records the
+                        call without touching what the scraper stored. */}
+                    <form action={setIsEarlySignal.bind(null, t.id, !t.is_early)}>
+                      <button
+                        className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-accent-fg"
+                        title={
+                          t.is_early
+                            ? "Treat as a live tender instead: it moves to the Live tenders tab and can be added to the pipeline."
+                            : "Treat as an early signal instead: it moves to the Early signals tab and leaves the bid pipeline."
+                        }
+                      >
+                        {t.is_early ? "Move to tenders" : "Move to early"}
+                      </button>
+                    </form>
                     <form action={recordFeedback.bind(null, t.id, "relevance", "not_relevant")}>
                       <button
                         className="text-xs font-medium text-fg-soft transition-colors duration-150 hover:text-hot"

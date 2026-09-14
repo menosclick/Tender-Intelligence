@@ -5,7 +5,6 @@ import {
   deadlineClass,
   stageLabel,
   asArray,
-  isEarlySignal,
   isEarlyActive,
   earlyStageLabel,
 } from "@/lib/format";
@@ -44,6 +43,7 @@ type Row = {
   recommended_products: unknown;
   publicatie_type: string | null;
   early_stage: string | null;
+  is_early: boolean | null;
 };
 
 // inputCls minus w-full: compact inline controls for the one-row add form.
@@ -62,7 +62,7 @@ export default async function DashboardPage() {
       admin
         .from("v_app_tenders")
         .select(
-          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage"
+          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage,is_early"
         )
         // A tender with no published deadline is still open — the pipeline's own
         // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -93,9 +93,9 @@ export default async function DashboardPage() {
   // Market consultations and pre-announcements are not biddable, so they must
   // not land in the KPIs, the deadline panels or "Latest qualified" — those
   // all answer "what bid work is live". They get their own strip below.
-  const openRows = allRows.filter((t) => !isEarlySignal(t.publicatie_type));
+  const openRows = allRows.filter((t) => !t.is_early);
   const earlySignals = allRows
-    .filter((t) => isEarlySignal(t.publicatie_type))
+    .filter((t) => t.is_early)
     .filter((t) => t.label === "Hot" || t.label === "Warm")
     .filter((t) => t.early_stage !== "dropped")
     // The ones being worked lead the strip — this answers "what am I following

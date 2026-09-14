@@ -84,6 +84,7 @@ export function classifyDomain(
   const p = products.filter(Boolean).join(" ").toLowerCase();
   let best = "Other";
   let bestScore = 0;
+  let bestTextHits = 0;
   for (const rule of DOMAIN_RULES) {
     const textHits = rule.patterns.filter((x) => t.includes(x)).length;
     const productHits = p
@@ -92,9 +93,15 @@ export function classifyDomain(
         ).length
       : 0;
     const score = textHits + productHits * PRODUCT_WEIGHT;
-    if (score > bestScore) {
+    // On a tie the buyer's own words win, because they describe what is being
+    // bought while the product is only what CBA would answer with. Van Hall
+    // Larenstein's "Identity & Access Managementsysteem" tied 3-3 between IAM
+    // (three text hits) and PAM (one PAM360 recommendation) and was reading as
+    // PAM purely because PAM sits earlier in DOMAIN_RULES.
+    if (score > bestScore || (score === bestScore && score > 0 && textHits > bestTextHits)) {
       best = rule.domain;
       bestScore = score;
+      bestTextHits = textHits;
     }
   }
   return best;
