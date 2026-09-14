@@ -30,6 +30,12 @@ export type MilestoneEvent = {
   days: number;
   official: boolean;
   hot: boolean; // submission deadlines carry the urgency mark
+  /**
+   * Board stage, when the tender has a card. Null means it is qualified and
+   * open but nobody has committed to it yet — still a real date to watch, so
+   * it belongs on the calendar; the surface can mark it as uncommitted.
+   */
+  stage: string | null;
 };
 
 // Dutch tender titles open with boilerplate that repeats across unrelated
@@ -65,9 +71,21 @@ export async function getMilestoneEvents(
   const notRelevant = new Set(
     (feedback ?? []).filter((f) => f.value === "not_relevant").map((f) => f.tender_id)
   );
-  const ids = (board ?? [])
-    .filter((b) => CALENDAR_STAGES.includes(b.stage) && !notRelevant.has(b.tender_id))
-    .map((b) => b.tender_id);
+  // A deadline is a deadline whether or not a board card exists. Scoping the
+  // calendar to bid_pipeline meant a month with twelve open Hot tenders showed
+  // one entry, because Derson had not moved them onto the board yet (he
+  // reported it 2026-09-14: "en el calendario no veo si no una sola"). Every
+  // qualified, open, still-relevant tender with a date is an event; the board
+  // stage now decorates the event instead of gating it.
+  const boardStage = new Map((board ?? []).map((b) => [b.tender_id, b.stage]));
+  const { data: qualified } = await admin
+    .from("v_app_tenders")
+    .select("id,title,deadline,days_to_deadline,label")
+    .in("label", ["Hot", "Warm"]);
+  const ids = (qualified ?? [])
+    .filter((t) => !notRelevant.has(t.id))
+    .filter((t) => !["Won", "Lost", "Dropped"].includes(boardStage.get(t.id) ?? ""))
+    .map((t) => t.id);
   if (ids.length === 0) return [];
 
   const [{ data: tenders }, { data: extras }, { data: msRows }] = await Promise.all([
@@ -110,6 +128,7 @@ export async function getMilestoneEvents(
           days,
           official: true,
           hot: false,
+          stage: boardStage.get(t.id) ?? null,
         });
       }
     }
@@ -124,6 +143,7 @@ export async function getMilestoneEvents(
         days: t.days_to_deadline,
         official: true,
         hot: true,
+        stage: boardStage.get(t.id) ?? null,
       });
     }
     for (const m of msByTender.get(t.id) ?? []) {
@@ -141,6 +161,7 @@ export async function getMilestoneEvents(
         days,
         official: m.source !== "manual",
         hot: m.kind === "submission_deadline",
+        stage: boardStage.get(t.id) ?? null,
       });
     }
   }

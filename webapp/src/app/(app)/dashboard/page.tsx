@@ -1,6 +1,14 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, stageLabel, asArray, isEarlySignal } from "@/lib/format";
+import {
+  deadlineText,
+  deadlineClass,
+  stageLabel,
+  asArray,
+  isEarlySignal,
+  isEarlyActive,
+  earlyStageLabel,
+} from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, PubTypeChip, btnSecondary, microLabel } from "@/lib/ui";
 import { Kpi, ChartCard, HBarList } from "@/lib/viz";
@@ -35,6 +43,7 @@ type Row = {
   pipeline_stage: string | null;
   recommended_products: unknown;
   publicatie_type: string | null;
+  early_stage: string | null;
 };
 
 // inputCls minus w-full: compact inline controls for the one-row add form.
@@ -53,7 +62,7 @@ export default async function DashboardPage() {
       admin
         .from("v_app_tenders")
         .select(
-          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type"
+          "id,title,buyer,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage"
         )
         // A tender with no published deadline is still open — the pipeline's own
         // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -88,7 +97,14 @@ export default async function DashboardPage() {
   const earlySignals = allRows
     .filter((t) => isEarlySignal(t.publicatie_type))
     .filter((t) => t.label === "Hot" || t.label === "Warm")
-    .sort((a, b) => (b.score ?? 0) - (a.score ?? 0))
+    .filter((t) => t.early_stage !== "dropped")
+    // The ones being worked lead the strip — this answers "what am I following
+    // up on", not just "what came in".
+    .sort(
+      (a, b) =>
+        Number(isEarlyActive(b.early_stage)) - Number(isEarlyActive(a.early_stage)) ||
+        (b.score ?? 0) - (a.score ?? 0)
+    )
     .slice(0, 5);
   const qualified = openRows.filter((t) => t.label === "Hot" || t.label === "Warm");
   const boardCards = (board ?? []) as { tender_id: number; stage: string }[];
@@ -138,11 +154,10 @@ export default async function DashboardPage() {
       };
   const extrasById = new Map((extras ?? []).map((e) => [e.id, e]));
   const domainOf = (t: Row) =>
-    classifyDomain([
-      t.title,
-      asArray(t.recommended_products).join(" "),
-      (extrasById.get(t.id)?.keyword_matches ?? []).join(" "),
-    ]);
+    classifyDomain(
+      [t.title, (extrasById.get(t.id)?.keyword_matches ?? []).join(" ")],
+      asArray(t.recommended_products)
+    );
 
   // Portfolio: open tenders by solution domain (count + share), rows filter the Inbox.
   const domainCount = new Map<string, number>();
@@ -499,6 +514,7 @@ export default async function DashboardPage() {
                   <th className="px-4 py-2.5">Buyer</th>
                   <th className="px-4 py-2.5">Kind</th>
                   <th className="px-4 py-2.5">Match</th>
+                  <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5">Respond by</th>
                 </tr>
               </thead>
@@ -528,6 +544,9 @@ export default async function DashboardPage() {
                     </td>
                     <td className="px-4 py-3">
                       <LabelChip label={t.label} />
+                    </td>
+                    <td className="px-4 py-3 text-xs text-fg-mid">
+                      {earlyStageLabel(t.early_stage)}
                     </td>
                     <td className="px-4 py-3 tabular-nums text-fg-mid">
                       {deadlineText(t.deadline, t.days_to_deadline, t.publicatie_type)}

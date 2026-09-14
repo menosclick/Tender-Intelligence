@@ -3,10 +3,16 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServer, createSupabaseAdmin } from "@/lib/supabase/server";
-import { BOARD_STAGES, MANUAL_MILESTONE_KINDS, type BoardStage } from "@/lib/format";
+import {
+  BOARD_STAGES,
+  EARLY_STAGES,
+  MANUAL_MILESTONE_KINDS,
+  type BoardStage,
+  type EarlyStage,
+} from "@/lib/format";
 
-// GOLDEN RULE: the app writes to bid_pipeline, tender_feedback,
-// tender_milestones and tender_actions, and may INSERT new rows into
+// GOLDEN RULE: the app writes to bid_pipeline, early_signal_pipeline,
+// tender_feedback, tender_milestones and tender_actions, and may INSERT into
 // tenders_scraped ONLY with platform='manual' (status pre-set to 'analyzed'
 // so the n8n pipeline never picks them up). It never updates or deletes rows
 // the scraper owns. tender_documents and milestone_extractions are written by
@@ -62,6 +68,34 @@ export async function addToBoard(tenderId: number) {
     );
   if (error) throw new Error(error.message);
   revalidatePath("/board");
+  revalidatePath("/inbox");
+  revalidatePath("/dashboard");
+  revalidatePath(`/tender/${tenderId}`);
+}
+
+/**
+ * Move a market consultation / pre-announcement along its own lifecycle.
+ *
+ * Deliberately NOT bid_pipeline: an early signal has nothing to submit, so
+ * every board stage would misdescribe it. It stays in the Early signals tab
+ * throughout and carries its state there; when the buyer finally publishes
+ * the real tender, that arrives as a separate AAO row which does go to the
+ * board.
+ */
+export async function setEarlyStage(tenderId: number, formData: FormData) {
+  await requireUser();
+  const stage = String(formData.get("stage") ?? "");
+  if (!EARLY_STAGES.includes(stage as EarlyStage))
+    throw new Error(`Invalid early-signal stage: ${stage}`);
+
+  const admin = createSupabaseAdmin();
+  const { error } = await admin
+    .from("early_signal_pipeline")
+    .upsert(
+      { tender_id: tenderId, stage, updated_at: new Date().toISOString() },
+      { onConflict: "tender_id" }
+    );
+  if (error) throw new Error(error.message);
   revalidatePath("/inbox");
   revalidatePath("/dashboard");
   revalidatePath(`/tender/${tenderId}`);

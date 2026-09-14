@@ -1,9 +1,21 @@
 import Link from "next/link";
 import { createSupabaseAdmin } from "@/lib/supabase/server";
-import { deadlineText, deadlineClass, stageLabel, asArray, isEarlySignal } from "@/lib/format";
+import {
+  deadlineText,
+  deadlineClass,
+  stageLabel,
+  asArray,
+  isEarlySignal,
+  isEarlyActive,
+  EARLY_STAGES,
+  EARLY_STAGE_LABEL,
+  EARLY_STAGE_MEANING,
+  earlyStageChip,
+  earlyStageLabel,
+} from "@/lib/format";
 import { classifyDomain, CORE_DOMAINS } from "@/lib/domains";
 import { LabelChip, PageHeader, PubTypeChip, btnSecondary, microLabel } from "@/lib/ui";
-import { addToBoard, recordFeedback } from "@/lib/actions";
+import { addToBoard, recordFeedback, setEarlyStage } from "@/lib/actions";
 import { InboxFilters } from "./filters";
 import { brokerFor } from "@/lib/partner-territory";
 
@@ -26,6 +38,7 @@ type Row = {
   pipeline_stage: string | null;
   recommended_products: unknown;
   publicatie_type: string | null;
+  early_stage: string | null;
 };
 
 const DUE_BUCKETS = [
@@ -64,7 +77,7 @@ export default async function InboxPage({
   let query = admin
     .from("v_app_tenders")
     .select(
-      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type"
+      "id,title,buyer,buyer_type,label,score,deadline,days_to_deadline,pipeline_stage,recommended_products,publicatie_type,early_stage"
     )
     // A tender with no published deadline is still open — the pipeline's own
     // v_pipeline_active says so. PostgREST gte() is never true for NULL, so
@@ -104,11 +117,10 @@ export default async function InboxPage({
     : { data: [] as { id: number; keyword_matches: string[] | null }[] };
   const extrasById = new Map((extras ?? []).map((e) => [e.id, e]));
   const domainOf = (t: Row) =>
-    classifyDomain([
-      t.title,
-      asArray(t.recommended_products).join(" "),
-      (extrasById.get(t.id)?.keyword_matches ?? []).join(" "),
-    ]);
+    classifyDomain(
+      [t.title, (extrasById.get(t.id)?.keyword_matches ?? []).join(" ")],
+      asArray(t.recommended_products)
+    );
 
   // Filters
   const buyerTypes = [...new Set(visible.map((t) => t.buyer_type ?? "unknown"))].sort();
@@ -123,7 +135,17 @@ export default async function InboxPage({
   if (label === "warmplus") rows = rows.filter((t) => t.label === "Hot" || t.label === "Warm");
   else if (label !== "all") rows = rows.filter((t) => t.label === label);
   if (kind === "tenders") rows = rows.filter((t) => !isEarlySignal(t.publicatie_type));
-  else if (kind === "early") rows = rows.filter((t) => isEarlySignal(t.publicatie_type));
+  else if (kind === "early") {
+    // A consultation Derson has dropped is a decision already made, so it
+    // leaves the working list the same way a hidden tender does.
+    rows = rows.filter(
+      (t) => isEarlySignal(t.publicatie_type) && t.early_stage !== "dropped"
+    );
+    // The ones being worked come first: this tab is the follow-up list.
+    rows = [...rows].sort(
+      (a, b) => Number(isEarlyActive(b.early_stage)) - Number(isEarlyActive(a.early_stage))
+    );
+  }
   if (buyer) rows = rows.filter((t) => (t.buyer_type ?? "unknown") === buyer);
   if (domain) rows = rows.filter((t) => domainOf(t) === domain);
   if (due) {
@@ -263,19 +285,59 @@ export default async function InboxPage({
                   {deadlineText(t.deadline, t.days_to_deadline, t.publicatie_type)}
                 </td>
                 <td className="px-4 py-3 text-xs text-fg-soft">
-                  {t.pipeline_stage ? stageLabel(t.pipeline_stage) : "—"}
+                  {isEarlySignal(t.publicatie_type) ? (
+                    <span
+                      className={`inline-flex rounded px-1.5 py-0.5 font-medium ${earlyStageChip(
+                        t.early_stage
+                      )}`}
+                      title={
+                        EARLY_STAGE_MEANING[t.early_stage ?? "new"] ??
+                        EARLY_STAGE_MEANING.new
+                      }
+                    >
+                      {earlyStageLabel(t.early_stage)}
+                    </span>
+                  ) : t.pipeline_stage ? (
+                    stageLabel(t.pipeline_stage)
+                  ) : (
+                    "—"
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center justify-end gap-2">
-                    {!t.pipeline_stage && (
-                      <form action={addToBoard.bind(null, t.id)}>
-                        <button
-                          className="text-xs font-medium text-accent-fg transition-colors duration-150 hover:underline"
-                          title="Add to Tender Pipeline (stage: Identified)"
+                    {/* A consultation cannot be bid, so it never gets a board
+                        card — it moves along its own states and stays in this
+                        tab. The real RFP, when it comes, is a separate AAO row
+                        and that one goes to the pipeline. */}
+                    {isEarlySignal(t.publicatie_type) ? (
+                      <form action={setEarlyStage.bind(null, t.id)}>
+                        <select
+                          name="stage"
+                          defaultValue={t.early_stage ?? "new"}
+                          className="rounded border border-line bg-surface px-1.5 py-1 text-xs text-fg"
+                          aria-label="Early signal status"
                         >
-                          Add to pipeline
+                          {EARLY_STAGES.map((s) => (
+                            <option key={s} value={s}>
+                              {EARLY_STAGE_LABEL[s]}
+                            </option>
+                          ))}
+                        </select>
+                        <button className="ml-1.5 text-xs font-medium text-accent-fg transition-colors duration-150 hover:underline">
+                          Set
                         </button>
                       </form>
+                    ) : (
+                      !t.pipeline_stage && (
+                        <form action={addToBoard.bind(null, t.id)}>
+                          <button
+                            className="text-xs font-medium text-accent-fg transition-colors duration-150 hover:underline"
+                            title="Add to Tender Pipeline (stage: Identified)"
+                          >
+                            Add to pipeline
+                          </button>
+                        </form>
+                      )
                     )}
                     <form action={recordFeedback.bind(null, t.id, "relevance", "not_relevant")}>
                       <button

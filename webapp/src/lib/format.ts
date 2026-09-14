@@ -70,6 +70,56 @@ export function pubTypeChip(t: string | null | undefined) {
   return PUB_TYPE_CHIP[t ?? ""] ?? "bg-sunken text-fg-mid";
 }
 
+// An early signal stays an early signal while CBA works it: it cannot enter
+// bid_pipeline, whose every stage describes bid work that does not exist yet.
+// It tracks its own lifecycle instead, so "I am in conversation with this
+// buyer" is visible without pretending a consultation is a bid. When the real
+// RFP lands it is a new AAO publication, and that one goes to the board.
+export const EARLY_STAGES = [
+  "new",
+  "analyzing",
+  "questions_sent",
+  "awaiting_rfp",
+  "dropped",
+] as const;
+export type EarlyStage = (typeof EARLY_STAGES)[number];
+
+export const EARLY_STAGE_LABEL: Record<string, string> = {
+  new: "New",
+  analyzing: "Analyzing",
+  questions_sent: "Questions sent",
+  awaiting_rfp: "Awaiting RFP",
+  dropped: "Dropped",
+};
+
+export const EARLY_STAGE_MEANING: Record<string, string> = {
+  new: "Not looked at yet.",
+  analyzing: "Reading the consultation and deciding whether to respond.",
+  questions_sent: "Responded to the buyer — input or questions submitted.",
+  awaiting_rfp: "Responded and waiting for the real tender to be published.",
+  dropped: "Not pursuing this one.",
+};
+
+// Active = still worth watching. Drives the "in progress" count and sort.
+export function isEarlyActive(stage: string | null | undefined): boolean {
+  return stage === "analyzing" || stage === "questions_sent" || stage === "awaiting_rfp";
+}
+
+export function earlyStageLabel(stage: string | null | undefined) {
+  return EARLY_STAGE_LABEL[stage ?? ""] ?? "New";
+}
+
+export const EARLY_STAGE_CHIP: Record<string, string> = {
+  analyzing: "bg-warm-soft text-warm",
+  questions_sent: "bg-accent-soft text-accent-fg",
+  awaiting_rfp: "bg-accent-soft text-accent-fg",
+  dropped: "bg-sunken text-fg-mid",
+};
+
+export function earlyStageChip(stage: string | null | undefined) {
+  return EARLY_STAGE_CHIP[stage ?? ""] ?? "bg-sunken text-fg-mid";
+}
+
 export const LABEL_CHIP: Record<string, string> = {
   Hot: "bg-hot-soft text-hot",
   Warm: "bg-warm-soft text-warm",
