@@ -4,6 +4,125 @@ Evidence log. A claim of "works/fixed" only counts with real output pasted here.
 
 ---
 
+## 2026-09-14 — The scraper was fetching ONE publication type, not three. ~165 tenders lost in 5 days.
+
+**Symptom:** none, which is the point. Every run since 2026-09-10 reported success, wrote rows, and drained its queue. A morning audit confirmed writes, types and queue — all correct — and still missed this.
+
+**Found by** chasing Derson's question "can I see the marktconsultaties in the webapp?".
+
+**Root cause:** n8n collapses repeated query parameters of the same name in an HTTP node's `queryParameters` and sends only the **last** one. The node asked for three types; TenderNed received one:
+
+```
+publicatieType=AAO + =MAC + =VAK   ->  6 rows returned, ALL VAK, 0 AAO, 0 MAC
+publicatieType=MAC alone           ->  7 rows returned, all MAC
+```
+
+So from 2026-09-10 — the day the MAC/VAK widening shipped — the pipeline stopped seeing **AAO, its main source**. For 2026-09-10..15 TenderNed held 145 AAO + 20 MAC + 15 VAK; the database had almost none of the first two.
+
+**Fix:** move the whole query string into the URL, where n8n cannot collapse it, and set `sendQuery: false`. Verified against the live API *before* applying:
+
+```
+one call, three types  ->  totalElements 84: AAO 71, MAC 7, VAK 6
+```
+
+`size` must be **<= 100**. An attempted `size=200` returned HTTP 400 and broke exec 11546:
+
+```
+400 parameterViolations: path "findPublications.arg1",
+    message "must be less than or equal to 100", value "200"
+```
+
+Corrected to `size=100` (the tested value). A 48h window runs 60-85 publications, so one page suffices.
+
+**Backfill + proof — execution 11547, 2026-09-14 15:23 UTC, 70s** (healthy runs are 15-65s; the broken ones were 4s):
+
+```
+165 rows recovered and analyzed (145 AAO + 20 MAC), 0 pending left
+2 new qualified tenders, both MAC — the first MAC rows the system has ever held:
+  #439815 Multi-Tenant SDN & Self-Service Netwerkarchitectuur — DUO
+          Hot, score 54, fit High -> OpManager, Site24x7      closes 2026-10-30
+  #439918 Service Desk Tool — Veiligheidsregio Twente
+          Warm, score 48, fit High -> ServiceDesk Plus        closes 2026-11-06
+v_app_tenders: 19 open, 14 Hot, 2 early signals
+```
+
+**Also fixed this session** (same outage, earlier layers): `Verwerk Tender` read `typePublicatie.code`, but in the DETAIL response that field is a descriptive *string* — `.code` was always undefined and fell back to `'AAO'`, mislabelling 100% of rows; the real code is `aankondigingCode.code`. Added `retryOnFail` 3x/5s on `Tenderned Publicaties` (the 09-10 outage was a one-off `EAI_AGAIN`), and a new `Guard Save Errors` node that throws when any insert item carries `.error`, so a write failure can no longer report success (exercised in exec 11537: 6 in, 6 out, no throw).
+
+**Lesson:** verifying that a pipeline *writes correctly* is not verifying that it *fetches everything*. Coverage and execution fail independently. Check coverage by comparing the source API's `totalElements` for a window against the rows actually stored for it.
+
+---
+
+## 2026-09-13 — Pipeline stale 102h: the Sept-10 early-signals deploy shipped without its DB migration
+
+**Symptom:** the web app showed "Pipeline may be stale. Last successful scrape was 102h ago (expected daily)." Last row in `tenders_scraped` was 2026-09-09 07:00:14, yet n8n reported **green "success"** for 11, 12 and 13 Sept.
+
+**Why the green was a lie:** `Save to Postgres` runs with continue-on-error, so every insert failed while the execution still finished "success". Node output for execution 11530 (today, 2026-09-13):
+
+```
+Save to Postgres: status=success in=0 out=5
+  json.error.message: "Column 'publicatie_type' does not exist in selected table"
+```
+
+The scrape itself was healthy — `Tenderned Publicaties` returned 38 publications and every node up to `Prepare DB Record` produced 5 items. Only the write failed.
+
+**Root cause:** the 2026-09-10 early-signals change (plan `plans/2026-09-10-early-signals-MAC-VAK.md`, step 3 "Prepare DB Record — persists publicatie_type", commit e94e01e) shipped **two of its three legs**: the n8n workflow and the web app were deployed, the database migration was never run. Column `publicatie_type` did not exist in `tenders_scraped`.
+
+Separate and unrelated: the 2026-09-10 run itself failed on a transient TenderNed DNS error (`getaddrinfo EAI_AGAIN www.tenderned.nl`). That resolved on its own and is not the cause of the outage.
+
+**Fix applied (two migrations, both additive):**
+
+1. `add_publicatie_type_to_tenders_scraped` — `add column if not exists publicatie_type text`, then backfilled the 2,960 pre-existing rows to `'AAO'` (everything scraped before 2026-09-10 came from an AAO-only query, so none of them are early signals).
+2. `expose_publicatie_type_in_v_app_tenders` — the web app reads `v_app_tenders`, which did NOT carry the new column. Fixing only the table would have restored the scraper and then broken every app screen that selects `publicatie_type` (`inbox/page.tsx:67`, `dashboard/page.tsx:56`). Column appended last; `create or replace view` refuses to insert a column mid-list (`42P16: cannot change name of view column`).
+
+**Verification (real output, not a green status):**
+
+- Column exists: `publicatie_type | text | YES`.
+- Backfill: `select publicatie_type, count(*)` → `AAO | 2960`, zero nulls.
+- **Write path proven**: inserted a row carrying `publicatie_type` — the exact statement that was failing — using the field list `Prepare DB Record` emits. Returned `id 10500 | __healthcheck__ | AAO`. Deleted immediately; `leftover_test_rows = 0`, table back to 2,960.
+- View serves the app: `v_app_tenders` returns the same 28 rows as before, now with the column populated (Rotterdam SOC 60/Hot, ICT Netwerkbeheer 59/Hot, PAM+IGA 58/Hot — matching the inbox screenshot).
+
+**NOT yet verified / open:**
+- The scheduled run has NOT executed since the fix. The workflow has only Schedule + manual triggers, so it cannot be fired via n8n MCP. **Next scheduled run: 07:00 Europe/Amsterdam.** The banner will clear on its own only if that run writes; confirm then.
+- Tenders published 10–13 Sept were never stored and will NOT appear by themselves — the daily query only looks back 2 days. They need a manual backfill run with a widened `publicatieDatumVanaf`.
+
+**Follow-up attempted same day — BLOCKED by an n8n MCP bug (not applied):**
+
+Tried to stop `Save to Postgres` from swallowing write errors. Plan was NOT to remove error tolerance (the node feeds the `Loop Over Items` cycle — a hard failure would abort the whole scrape and lose the remaining tenders too, which is worse than today). Plan was to switch `continueOnFail: true` → `onError: "continueErrorOutput"` and wire output index 1 into a new `Slack DB Write Alert` node (same pattern and credential `cbs8xtL1yp3dKJDL` as the existing `Slack AI Failure Alert`).
+
+`validateOnly: true` passed. Every real write then failed with:
+
+```
+Invalid request: request/body Unrecognized key(s) in object: 'sourceWorkflowId'
+VALIDATION_ERROR
+```
+
+Cause: `sourceWorkflowId` is a TOP-LEVEL field the n8n GET returns (confirmed in the saved backup's key list); `n8n_update_partial_workflow` echoes it back in the PUT and the n8n API rejects it. Not fixable from the MCP side — it blocks ANY edit to this workflow. Confirms the standing note "n8n MCP cannot edit workflows" for this project. Workflow verified untouched afterwards (`updatedAt` still 2026-09-10T13:31:29, no partial write landed).
+
+**KEY FINDING — the Telegram alerting already exists and works; continueOnFail is what muted it:**
+
+This workflow ALREADY has `errorWorkflow: fs7DKAix5cDLc8vA` ("OS Monitor — Workflow Failure Alerts": Error Trigger → Format Alert → Telegram, credential `OdJIhsCLkInX03UK`, chat `6991017392`). Nothing needs to be built.
+
+It fired exactly ONCE in this whole incident — execution 11523 on 2026-09-10 07:00:05, the DNS failure. That alert did reach Derson. On 11/12/13 Sept it stayed silent because n8n's Error Trigger only fires when an execution FAILS, and `continueOnFail: true` made every run end as "success". The alerting was never broken; the swallowed error is what starved it.
+
+So the real fix is to stop the node from reporting false success. Two options, trade-off to decide with Derson:
+- **`onError: "continueErrorOutput"`** + wire the red output to a Telegram node. Keeps the scrape running for the remaining tenders; needs one new node.
+- **`onError: "stopWorkflow"`** — simplest, makes the EXISTING Telegram error workflow fire with zero new nodes, but aborts the rest of that run's scrape.
+
+**To apply by hand in the n8n UI:**
+1. Open `Save to Postgres` → Settings → On Error → "Continue (using error output)".
+2. Add a Telegram node named `Telegram DB Write Alert` (credential `OdJIhsCLkInX03UK` "Telegram — Derson's Brain Bot", chatId `6991017392`). Derson asked for Telegram, not Slack — it is the channel he actually reads on mobile, and it matches the existing OS Monitor alerting.
+3. Connect the Postgres node's SECOND (red) output to it.
+4. Message text:
+   `🔴 CBA Intelligence: fallo al GUARDAR el tender {{ $json.external_id || 'desconocido' }} — se scrapeó pero NO se guardó. n8n reportará esta corrida como "success", así que esta alerta es el estado real. Error: {{ $json.error?.message || $json.error || 'desconocido' }}`
+
+Backup taken before the attempt: `workflows/backup-2026-09-13-AFyIJ2PzlHA469nq-before-onError-fix.json` (76 nodes).
+
+**Gotchas for future sessions:**
+- A schema change in this system has THREE legs: n8n workflow, the `v_app_tenders` view, and the table. Shipping the workflow alone fails silently; shipping table+workflow without the view breaks the app instead.
+- `Save to Postgres` swallows write errors into `json.error` and still reports success. Never trust an n8n green here — check row counts in the DB, or execution duration (a no-op run takes ~3s vs ~15-60s for a real one).
+
+---
+
 ## 2026-07-13 — Full UI redesign, verified with rendered screenshots (branch design/ui-refresh)
 
 **What changed (presentation only, zero functional changes):** OKLCH design-token system in `globals.css` (`@theme`), IBM Plex Sans/Mono via next/font, dark teal navigation rail with a health-aware status dot, one shared chip/button/input/table vocabulary (`src/lib/ui.tsx`), tender detail prose de-carded, favicon, a11y fixes (AA contrast, focus-visible, aria-current, kanban stage select as non-drag path). Design intent documented in `webapp/PRODUCT.md` + `webapp/DESIGN.md`.
